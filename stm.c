@@ -224,12 +224,15 @@ listtrash()
 int
 main(int argc, char *argv[])
 {
-	if (argc < 2) {
-		fprintf(stderr, "Usage: %s [filename]\n", argv[0]);
-		exit(EXIT_FAILURE);
-	}
+	if (argc < 2)
+		die("Usage: %s [-l] [file]", argv[0]);
 
-	trash(argv[1]);
+	if (strcmp(argv[1], "-l") == 0) {
+		if (argc > 2)
+			die("Unknown argument: %s", argv[2]);
+		listtrash();
+	} else
+		trash(argv[1]);
 
 	return EXIT_SUCCESS;
 }
