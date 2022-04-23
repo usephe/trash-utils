@@ -2,11 +2,23 @@ CFLAGS = -Wall -Wextra -pedantic -ggdb3
 
 SRC = stm.c util.c
 OBJ = $(SRC:.c=.o);
+BIN = stm
 
-stm: $(OBJ)
+$(BIN): $(OBJ)
 	$(CC) $(LDFLAGS) -o $@ $(OBJ)
 
-clean:
-	$(RM) stm $(OBJ)
+run:
+	@$(MAKE) -s exec
+runv:
+	@$(MAKE) -s valgrind_exec
 
-.PHONY: all clean
+exec: stm
+	@./stm stm
+
+valgrind_exec: stm
+	@valgrind --track-fds=yes ./$(BIN) $(BIN)
+
+clean:
+	$(RM) $(OBJ) $(BIN)
+
+.PHONY: run runv clean
