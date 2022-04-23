@@ -12,6 +12,8 @@
 
 #include "util.h"
 
+char *arguments = "[-l] [file...]";
+
 int
 ftrashinfo(FILE *stream, const char *path)
 {
@@ -226,7 +228,7 @@ int
 main(int argc, char *argv[])
 {
 	if (argc < 2)
-		die("Usage: %s [-l] [file]", argv[0]);
+		die("Usage: %s %s", argv[0], arguments);
 
 	int opt;
 	while ((opt = getopt(argc, argv, "l")) != -1) {
@@ -238,11 +240,12 @@ main(int argc, char *argv[])
 			exit(EXIT_SUCCESS);
 			break;
 		case '?':
-			die("Usage: %s [-l] [file]", argv[0]);
+			die("Usage: %s %s", argv[0], arguments);
 		}
 	}
 
-	trash(argv[1]);
+	for (; optind < argc; optind++)
+		trash(argv[optind]);
 
 	return EXIT_SUCCESS;
 }
