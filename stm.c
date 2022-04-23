@@ -1,16 +1,15 @@
 #include <assert.h>
+#include <dirent.h>
+#include <errno.h>
 #include <libgen.h>
+#include <linux/limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
 
-#include <linux/limits.h>
-
 #include "util.h"
-#include "util.h"
-
 
 int
 ftrashinfo(FILE *stream, const char *path)
@@ -132,6 +131,92 @@ trash(const char *path)
 	fclose(infofile);
 
 	return 0;
+}
+
+void
+readtrashinfo(const char *path)
+{
+	struct stat statbuf;
+
+	if (stat(path, &statbuf) < 0)
+		die("stat:");
+
+	if (!S_ISREG(statbuf.st_mode))
+		die("%s is not a regular file", path);
+
+	FILE *infofile = fopen(path, "r");
+	if (!infofile)
+		die("fopen:");
+
+	char *filepath = NULL;
+	char *deletiondate = NULL;
+
+	char *line = NULL;
+	size_t len = 0;
+	ssize_t nread;
+	while ((nread = getline(&line, &len, infofile)) != -1) {
+		if (strncmp(line, "Path=", strlen("Path=")) == 0) {
+			filepath = malloc((nread + 1) * sizeof(*filepath));
+			strcpy(filepath, line);
+		} else if (strncmp(line, "DeletionDate=", strlen("DeletionDate=")) == 0) {
+			deletiondate = malloc((nread + 1) * sizeof(*filepath));
+			strcpy(deletiondate, line);
+		}
+	};
+	free(line);
+
+	if (!filepath || !deletiondate)
+		die("invalid info: %s", path);
+
+	if (filepath[strlen(filepath) - 1] == '\n')
+		filepath[strlen(filepath) - 1] = '\0';
+
+	if (deletiondate[strlen(deletiondate) - 1] == '\n')
+		deletiondate[strlen(deletiondate) - 1] = '\0';
+
+	// Remove the prefix Path= and DeletionDate=
+	memmove(filepath, filepath + strlen("Path="), strlen(filepath) - strlen("Path=") + 1);
+	memmove(deletiondate,
+			deletiondate + strlen("DeletionDate="),
+			strlen(deletiondate) - strlen("DeletionDate=") + 1);
+
+	printf("%s %s\n", deletiondate, filepath);
+
+	free(filepath);
+	free(deletiondate);
+	fclose(infofile);
+}
+
+void
+listtrash()
+{
+	char *trash_home = trashinit();
+	char infodirpath[PATH_MAX];
+	char infofilepath[PATH_MAX];
+	struct dirent *dp;
+
+	sprintf(infodirpath, "%s/info", trash_home);
+
+	DIR *infodir = opendir(infodirpath);
+	if (!infodir)
+		die("opendir:");
+
+	errno = 0;
+	while ((dp = readdir(infodir)) != NULL) {
+		if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0)
+			continue;
+
+		sprintf(infofilepath, "%s/info/%s", trash_home, dp->d_name);
+
+		readtrashinfo(infofilepath);
+	}
+
+	if (errno != 0)
+		die("readdir:");
+
+
+	free(trash_home);
+	closedir(infodir);
 }
 
 int
