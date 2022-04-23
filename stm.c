@@ -8,6 +8,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "util.h"
 
@@ -227,12 +228,21 @@ main(int argc, char *argv[])
 	if (argc < 2)
 		die("Usage: %s [-l] [file]", argv[0]);
 
-	if (strcmp(argv[1], "-l") == 0) {
-		if (argc > 2)
-			die("Unknown argument: %s", argv[2]);
-		listtrash();
-	} else
-		trash(argv[1]);
+	int opt;
+	while ((opt = getopt(argc, argv, "l")) != -1) {
+		switch (opt) {
+		case 'l':
+			if (argc > 2)
+				die("Unknown argument: %s", argv[2]);
+			listtrash();
+			exit(EXIT_SUCCESS);
+			break;
+		case '?':
+			die("Usage: %s [-l] [file]", argv[0]);
+		}
+	}
+
+	trash(argv[1]);
 
 	return EXIT_SUCCESS;
 }
