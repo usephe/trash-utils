@@ -14,6 +14,7 @@
 int
 ftrashinfo(FILE *stream, const char *path)
 {
+	assert(stream != NULL && path != NULL);
 	time_t time_now = time(NULL);
 	char buf[1024];
 
@@ -42,6 +43,7 @@ trashinit()
 
 	if (!xdgdata) {
 		const char *home = getenv("HOME");
+		xdgdata = malloc((strlen(home) + 1 + strlen(".local/share") + 1) * sizeof(char));
 		sprintf(xdgdata, "%s/%s", home, ".local/share");
 	}
 
