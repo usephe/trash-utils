@@ -1,24 +1,24 @@
 CFLAGS = -Wall -Wextra -pedantic -ggdb3
 
+PREFIX = /usr/local
+
 SRC = stm.c util.c
 OBJ = $(SRC:.c=.o);
 BIN = stm
 
+all: $(BIN)
+
 $(BIN): $(OBJ)
 	$(CC) $(LDFLAGS) -o $@ $(OBJ)
 
-run:
-	@$(MAKE) -s exec
-runv:
-	@$(MAKE) -s valgrind_exec
+install: all
+	install -m 0755 -d $(DESTDIR)$(PREFIX)/bin
+	install -m 0755  $(BIN) $(DESTDIR)$(PREFIX)/bin
 
-exec: stm
-	@./stm stm
-
-valgrind_exec: stm
-	@valgrind --track-fds=yes ./$(BIN) $(BIN)
+uninstall:
+	$(RM) $(DESTDIR)$(PREFIX)/bin/$(BIN)
 
 clean:
 	$(RM) $(OBJ) $(BIN)
 
-.PHONY: run runv clean
+.PHONY: all install uninstall clean
