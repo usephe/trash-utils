@@ -14,6 +14,34 @@
 
 char *arguments = "[-l] [file...]";
 
+struct trashinfo {
+	char *filepath;
+	char *deletiondate;
+	int isvalid;
+};
+
+
+struct trashinfo *
+create_trashinfo()
+{
+	struct trashinfo *trashinfo = malloc(sizeof(*trashinfo));
+	if (!trashinfo)
+		die("malloc:");
+	trashinfo->filepath = trashinfo->deletiondate = NULL;
+	trashinfo->isvalid = 0;
+
+	return trashinfo;
+}
+
+void
+free_trashinfo(struct trashinfo *trashinfo)
+{
+	free(trashinfo->filepath);
+	free(trashinfo->deletiondate);
+
+	free(trashinfo);
+}
+
 int
 ftrashinfo(FILE *stream, const char *path)
 {
@@ -138,20 +166,22 @@ trash(const char *path)
 	return 0;
 }
 
-void
-readtrashinfo(const char *path)
+struct trashinfo *
+readinfofile(FILE *infofile)
 {
+	struct trashinfo *trashinfo = create_trashinfo();
 	struct stat statbuf;
 
-	if (stat(path, &statbuf) < 0)
+	int fd = fileno(infofile);
+	if (fd < 0)
+		return NULL;
+
+	if (fstat(fd, &statbuf) < 0)
 		die("stat:");
 
 	if (!S_ISREG(statbuf.st_mode))
-		die("%s is not a regular file", path);
+		return NULL;
 
-	FILE *infofile = fopen(path, "r");
-	if (!infofile)
-		die("fopen:");
 
 	char *filepath = NULL;
 	char *deletiondate = NULL;
@@ -171,7 +201,7 @@ readtrashinfo(const char *path)
 	free(line);
 
 	if (!filepath || !deletiondate)
-		die("invalid info: %s", path);
+		return NULL;
 
 	if (filepath[strlen(filepath) - 1] == '\n')
 		filepath[strlen(filepath) - 1] = '\0';
@@ -185,11 +215,10 @@ readtrashinfo(const char *path)
 			deletiondate + strlen("DeletionDate="),
 			strlen(deletiondate) - strlen("DeletionDate=") + 1);
 
-	printf("%s %s\n", deletiondate, filepath);
+	trashinfo->filepath = filepath;
+	trashinfo->deletiondate = deletiondate;
 
-	free(filepath);
-	free(deletiondate);
-	fclose(infofile);
+	return trashinfo;
 }
 
 void
@@ -199,6 +228,8 @@ listtrash()
 	char infodirpath[PATH_MAX];
 	char infofilepath[PATH_MAX];
 	struct dirent *dp;
+	struct trashinfo *trashinfo;
+	FILE *infofile;
 
 	sprintf(infodirpath, "%s/info", trash_home);
 
@@ -213,7 +244,20 @@ listtrash()
 
 		sprintf(infofilepath, "%s/info/%s", trash_home, dp->d_name);
 
-		readtrashinfo(infofilepath);
+		infofile = fopen(infofilepath, "r");
+		if (!infofile)
+			die("fopen:");
+
+		trashinfo = readinfofile(infofile);
+		if (!trashinfo)
+			die("readinfofile:");
+
+		printf("%s %s\n", trashinfo->deletiondate, trashinfo->filepath);
+
+		free_trashinfo(trashinfo);
+		fclose(infofile);
+
+		errno = 0;
 	}
 
 	if (errno != 0)
