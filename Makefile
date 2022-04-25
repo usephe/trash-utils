@@ -3,7 +3,7 @@ CFLAGS = -Wall -Wextra -pedantic -ggdb3
 PREFIX = /usr/local
 
 SRC = stm.c util.c
-OBJ = $(SRC:.c=.o);
+OBJ = $(SRC:.c=.o)
 BIN = stm
 
 all: $(BIN)
