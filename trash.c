@@ -44,7 +44,7 @@ trashinit()
 	char *xdgdata = getenv("XDG_DATA_HOME");
 	struct stat statbuf;
 
-	if (!xdgdata) {
+	if (!xdgdata || !xdgdata[0]) {
 		const char *home = getenv("HOME");
 		xdgdata = malloc((strlen(home) + 1 + strlen(".local/share") + 1) * sizeof(char));
 		sprintf(xdgdata, "%s/%s", home, ".local/share");
