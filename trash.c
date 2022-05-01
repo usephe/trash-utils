@@ -43,7 +43,7 @@ free_trashinfo(struct trashinfo *trashinfo)
 }
 
 int
-ftrashinfo(FILE *stream, const char *path)
+writeinfofile(FILE *stream, const char *path)
 {
 	assert(stream != NULL && path != NULL);
 	time_t time_now = time(NULL);
@@ -153,7 +153,7 @@ trash(const char *path)
 	if (!realpath(path, fullpath))
 		die(":");
 
-	ftrashinfo(infofile, fullpath);
+	writeinfofile(infofile, fullpath);
 
 	// move path into Trash/file directory
 	if (rename(path, trashfilepath) < 0)
