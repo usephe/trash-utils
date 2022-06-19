@@ -2,7 +2,7 @@ CFLAGS = -Wall -Wextra -pedantic -ggdb3
 
 PREFIX = /usr/local
 
-SRC = trash.c util.c
+SRC = trash.c util.c main.c
 OBJ = $(SRC:.c=.o)
 BIN = tdo
 

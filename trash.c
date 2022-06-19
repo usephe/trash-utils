@@ -8,11 +8,8 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-#include <unistd.h>
 
 #include "util.h"
-
-char *arguments = "[-l] [file...]";
 
 struct trashinfo {
 	char *filepath;
@@ -267,27 +264,64 @@ listtrash()
 }
 
 int
-main(int argc, char *argv[])
+strendswith(char *str, char *suffix)
 {
-	if (argc < 2)
-		die("Usage: %s %s", argv[0], arguments);
+	assert(str != NULL && suffix != NULL);
+	int srclen = strlen(str);
+	int suffixlen = strlen(suffix);
 
-	int opt;
-	while ((opt = getopt(argc, argv, "l")) != -1) {
-		switch (opt) {
-		case 'l':
-			if (argc > 2)
-				die("Unknown argument: %s", argv[2]);
-			listtrash();
-			exit(EXIT_SUCCESS);
-			break;
-		case '?':
-			die("Usage: %s %s", argv[0], arguments);
-		}
+	if (suffixlen > srclen)
+		return 0;
+
+	return strcmp(str + (srclen - suffixlen), suffix) == 0;
+}
+
+void
+cleantrash()
+{
+	char *trash_home = trashinit();
+	char infodirpath[PATH_MAX] = {0};
+	char filesdirpath[PATH_MAX];
+	char filepath[PATH_MAX];
+	char filename[PATH_MAX];
+	struct dirent *dp;
+
+	sprintf(infodirpath, "%s/info", trash_home);
+	sprintf(filesdirpath, "%s/files", trash_home);
+
+	DIR *infodir = opendir(infodirpath);
+	if (!infodir)
+		die("opendir:");
+
+	errno = 0;
+	while ((dp = readdir(infodir)) != NULL) {
+		if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
+			continue;
+
+		if (!strendswith(dp->d_name, ".trashinfo"))
+			continue;
+
+		// get the file name without the .trashinfo extension
+		strncpy(filename, dp->d_name, strlen(dp->d_name) - strlen(".trashinfo"));
+		filename[strlen(dp->d_name) - strlen(".trashinfo")] = '\0';
+
+		sprintf(filepath, "%s/%s.trashinfo", infodirpath, filename);
+		if (remove(filepath) < 0)
+			die("remove:");
+		printf("%s\n", filepath);
+
+		sprintf(filepath, "%s/%s", filesdirpath, filename);
+		if (remove(filepath) < 0)
+			die("remove:");
+		printf("%s\n", filepath);
+
+		errno = 0;
 	}
 
-	for (; optind < argc; optind++)
-		trash(argv[optind]);
+	if (errno != 0)
+		die("readdir:");
 
-	return EXIT_SUCCESS;
+	free(trash_home);
+	closedir(infodir);
+	return;
 }
