@@ -48,20 +48,18 @@ writeinfofile(FILE *stream, const char *path)
 	assert(stream != NULL && path != NULL);
 	time_t time_now = time(NULL);
 	char buf[1024];
+	int result;
 
 	if (!strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", localtime(&time_now))) {
 		return -1;
 	}
 
-	if (fprintf(stream,
-			"[Trash Info]\n"
-			"Path=%s\n"
-			"DeletionDate=%s\n",
-			path, buf
-	       ) < 0)
-		die("Can't write to file:");
+	result = fprintf(stream, "[Trash Info]\n"
+				"Path=%s\n"
+				"DeletionDate=%s\n",
+				path, buf);
 
-	return 0;
+	return result;
 }
 
 char *
