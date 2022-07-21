@@ -1,19 +1,11 @@
 #ifndef STRASH_H
 #define STRASH_H
-#include <stdio.h>
+typedef struct trash Trash;
 
-struct trashinfo {
-	char *filepath;
-	char *deletiondate;
-	int isvalid;
-};
+Trash *opentrash();
+void closetrash(Trash *);
 
-
-int trash(const char *path);
-void listtrash();
-void cleantrash();
-void restoretrash();
-
-struct trashinfo *create_trashinfo();
-void free_trashinfo(struct trashinfo *trashinfo);
+int trashput(Trash *, const char *);
+void trashlist(Trash *);
+void trashclean(Trash *);
 #endif

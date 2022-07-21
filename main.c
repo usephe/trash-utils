@@ -13,20 +13,20 @@ main(int argc, char *argv[])
 	if (argc < 2)
 		die("Usage: %s %s", argv[0], arguments);
 
+	Trash *trash = opentrash();
+
 	int opt;
 	while ((opt = getopt(argc, argv, "lc")) != -1) {
 		switch (opt) {
 		case 'l':
 			if (argc > 2)
 				die("Unknown argument: %s", argv[2]);
-			listtrash();
-			exit(EXIT_SUCCESS);
+			trashlist(trash);
 			break;
 		case 'c':
 			if (argc > 2)
 				die("Unknown argument: %s", argv[2]);
-			cleantrash();
-			exit(EXIT_SUCCESS);
+			trashclean(trash);
 			break;
 		case '?':
 			die("Usage: %s %s", argv[0], arguments);
@@ -34,7 +34,8 @@ main(int argc, char *argv[])
 	}
 
 	for (; optind < argc; optind++)
-		trash(argv[optind]);
+		trashput(trash, argv[optind]);
 
+	closetrash(trash);
 	return EXIT_SUCCESS;
 }
