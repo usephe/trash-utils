@@ -5,7 +5,7 @@
 #include "trash.h"
 
 
-char *arguments = "[-l] [file...]";
+char *arguments = "[-lc] [file...]";
 
 int
 main(int argc, char *argv[])
