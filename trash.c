@@ -286,6 +286,9 @@ trashlist(Trash *trash)
 		if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0)
 			continue;
 
+		if (!strendswith(dp->d_name, ".trashinfo"))
+			continue;
+
 		sprintf(infofilepath, "%s/%s", trash->infodir, dp->d_name);
 
 		infofile = fopen(infofilepath, "r");
