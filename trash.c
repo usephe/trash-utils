@@ -295,9 +295,14 @@ trashlist(Trash *trash)
 		if (!infofile)
 			die("fopen:");
 
+		errno = 0;
 		trashinfo = readinfofile(infofile);
-		if (!trashinfo)
-			die("readinfofile:");
+		if (!trashinfo) {
+			if (errno != 0)
+				die("readinfofile:");
+			else
+				die("readinfofile");
+		}
 
 		printf("%s %s\n", trashinfo->deletiondate, trashinfo->filepath);
 
