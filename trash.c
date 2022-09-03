@@ -340,8 +340,9 @@ trashclean(Trash *trash)
 			continue;
 
 		// get the file name without the .trashinfo extension
-		strncpy(filename, dp->d_name, strlen(dp->d_name) - strlen(".trashinfo"));
-		filename[strlen(filename)] = '\0';
+		int filenamelen = strlen(dp->d_name) - strlen(".trashinfo");
+		strncpy(filename, dp->d_name, filenamelen);
+		filename[filenamelen] = '\0';
 
 		sprintf(filepath, "%s/%s.trashinfo", trash->infodir, filename);
 		if (remove(filepath) < 0)
