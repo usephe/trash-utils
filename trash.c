@@ -14,6 +14,7 @@
 
 struct trashinfo {
 	char *filepath;
+	char *original_location;
 	char *deletiondate;
 	int isvalid;
 };
@@ -353,6 +354,83 @@ trashclean(Trash *trash)
 		if (remove(filepath) < 0)
 			die("remove:");
 		printf("%s\n", filepath);
+
+		errno = 0;
+	}
+
+	if (errno != 0)
+		die("readdir:");
+
+	closedir(infodir);
+}
+
+void
+trashremove(Trash *trash, char *pattern)
+{
+	asserttrash(trash);
+	assert(pattern != NULL);
+
+	char infofilepath[PATH_MAX];
+	char filepath[PATH_MAX];
+	char filename[PATH_MAX];
+
+	struct dirent *dp;
+	struct trashinfo *trashinfo;
+	FILE *infofile;
+
+	DIR *infodir = opendir(trash->infodir);
+	if (!infodir)
+		die("opendir:");
+
+	errno = 0;
+	while ((dp = readdir(infodir)) != NULL) {
+		if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0)
+			continue;
+
+		if (!strendswith(dp->d_name, ".trashinfo"))
+			continue;
+
+		// get the file name without the .trashinfo extension
+		int filenamelen = strlen(dp->d_name) - strlen(".trashinfo");
+		strncpy(filename, dp->d_name, filenamelen);
+		filename[filenamelen] = '\0';
+
+		sprintf(infofilepath, "%s/%s", trash->infodir, dp->d_name);
+		sprintf(filepath, "%s/%s", trash->filesdir, filename);
+
+		infofile = fopen(infofilepath, "r");
+		if (!infofile)
+			die("fopen:");
+
+		trashinfo = readinfofile(infofile);
+
+		errno = 0;
+		if (!trashinfo) {
+			if (errno != 0)
+				die("readinfofile:");
+			else
+				die("readinfofile");
+		}
+
+		char *filep = strdup(trashinfo->filepath);
+		char *original_filename = basename(filep);
+
+		// TODO: support removing none empty directories from Trash
+		if (!strcmp(original_filename, pattern)) {
+			if (remove(filepath) < 0)
+				die("remove:");
+			printf("trashfile path: %s\n", filepath);
+
+			if (remove(infofilepath) < 0)
+				die("remove:");
+			printf("trashinfo path: %s\n", infofilepath);
+
+			printf("\n");
+		}
+
+		free(filep);
+		free_trashinfo(trashinfo);
+		fclose(infofile);
 
 		errno = 0;
 	}

@@ -8,4 +8,5 @@ void closetrash(Trash *);
 int trashput(Trash *, const char *);
 void trashlist(Trash *);
 void trashclean(Trash *);
+void trashremove(Trash *, char *);
 #endif
