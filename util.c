@@ -24,3 +24,10 @@ die(const char *fmt, ...)
 
 	exit(EXIT_FAILURE);
 }
+
+const char *
+xgetenv(const char *const env, const char *fallback) {
+	const char *value = getenv(env);
+
+	return value && value[0] ? value : fallback;
+}

@@ -2,7 +2,7 @@
 #define STRASH_H
 typedef struct trash Trash;
 
-Trash *opentrash();
+Trash *opentrash(const char *);
 void closetrash(Trash *);
 
 int trashput(Trash *, const char *);

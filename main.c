@@ -13,7 +13,7 @@ main(int argc, char *argv[])
 	if (argc < 2)
 		die("Usage: %s %s", argv[0], arguments);
 
-	Trash *trash = opentrash();
+	Trash *trash = opentrash(NULL);
 
 	int opt;
 	while ((opt = getopt(argc, argv, "lcr")) != -1) {

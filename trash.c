@@ -20,22 +20,10 @@ struct trashinfo {
 };
 
 struct trash {
-	char *trashpath;
+	char *trashdir;
 	char *filesdir;
 	char *infodir;
 };
-
-int
-getenv_or_default(char *buf, const char *env, const char *default_val) {
-	const char *xdgdata = getenv(env);
-	int ret;
-	if (!xdgdata || !xdgdata[0])
-		ret = sprintf(buf, "%s/%s", getenv("HOME"), default_val);
-	else
-		ret = sprintf(buf, "%s", xdgdata);
-
-	return ret;
-}
 
 void
 asserttrash(Trash *trash)
@@ -44,52 +32,65 @@ asserttrash(Trash *trash)
 	assert(trash->filesdir != NULL && trash->infodir != NULL);
 }
 
+void xmkdir(char *path) {
+    char *sep = strrchr(path, '/');
+    if(sep != NULL) {
+        *sep = '\0';
+        xmkdir(path);
+        *sep = '/';
+    }
+
+	if (!path || !path[0])
+		return;
+
+	if(mkdir(path, 0777) && errno != EEXIST)
+		die("mkdir '%s':", path);
+}
+
+// if path is NULL used XDG_DATA_HOME/Trash as the trash location instead
 Trash *
-opentrash()
+createtrash(const char *path)
 {
 	Trash *trash = malloc(sizeof(*trash));
-	trash->trashpath = NULL;
+	char trashloc[PATH_MAX + 1];
+	int trashdirlen = 0;
 
-	char buf[PATH_MAX];
-	trash->trashpath = malloc(PATH_MAX * sizeof(*trash->trashpath));
-	struct stat statbuf;
+	if (path) {
+		strcpy(trashloc, path);
+	} else {
+		const char *home = xgetenv("HOME", NULL);
+		if (!home)
+			die("HOME is not set");
 
+		char defaultxdgdata[strlen(home) + strlen("/.local/share") + 1];
+		sprintf(defaultxdgdata, "%s%s", home, "/.local/share");
 
-	char *xdgdata = buf;
-	if (getenv_or_default(xdgdata, "XDG_DATA_HOME", "/.local/share") < 0)
-		die("getenv_or_default:");
+		strcpy(trashloc, xgetenv("XDG_DATA_HOME", defaultxdgdata));
+	}
 
-	if (stat(xdgdata, &statbuf) < 0)
-		die("%s: doesn't exits", trash->trashpath);
+	trashdirlen = strlen(trashloc) + strlen("/Trash");
+	trash->trashdir = malloc(
+			(trashdirlen + 1) * sizeof(char));
+	sprintf(trash->trashdir, "%s%s", trashloc, "/Trash");
 
-	sprintf(trash->trashpath, "%s/Trash", xdgdata);
+	trash->filesdir = malloc(
+			(trashdirlen + strlen("/files") + 1) * sizeof(char));
+	sprintf(trash->filesdir, "%s%s", trash->trashdir, "/files");
 
-	if (stat(trash->trashpath, &statbuf) < 0) {
-		if (mkdir(trash->trashpath, 0755) < 0)
-			die("cannot make trash home:");
-	} else if (!S_ISDIR(statbuf.st_mode))
-		die("cannot access Trash directory");
+	trash->infodir = malloc(
+			(trashdirlen + strlen("/info") + 1) * sizeof(char));
+	sprintf(trash->infodir, "%s%s", trash->trashdir, "/info");
 
-	sprintf(buf, "%s/files", trash->trashpath);
-	if (stat(buf, &statbuf) < 0) {
-		if (mkdir(buf, 0700) < 0)
-			die("cannot make trash files:");
-	} else if (!S_ISDIR(statbuf.st_mode))
-		die("cannot access Trash/files directory");
+	xmkdir(trash->filesdir);
+	xmkdir(trash->infodir);
 
-	trash->filesdir = malloc((strlen(buf) + 1) * sizeof(*trash->filesdir));
-	strcpy(trash->filesdir, buf);
+	return trash;
+}
 
-	sprintf(buf, "%s/info", trash->trashpath);
-	if (stat(buf, &statbuf) < 0) {
-		if (mkdir(buf, 0700) < 0)
-			die("cannot make trash info:");
-	} else if (!S_ISDIR(statbuf.st_mode))
-		die("cannot access Trash/info directory");
-
-	trash->infodir = malloc((strlen(buf) + 1) * sizeof(*trash->infodir));
-	strcpy(trash->infodir, buf);
-
+Trash *
+opentrash(const char *trashpath)
+{
+	Trash *trash = createtrash(trashpath);
 	return trash;
 }
 
@@ -100,7 +101,7 @@ closetrash(Trash *trash)
 
 	free(trash->filesdir);
 	free(trash->infodir);
-	free(trash->trashpath);
+	free(trash->trashdir);
 	free(trash);
 }
 
@@ -165,8 +166,8 @@ trashput(Trash *trash, const char *path)
 	// make the new path which path get moved to
 	char trashfilepath[PATH_MAX];
 	char trashinfopath[PATH_MAX];
-	sprintf(trashfilepath, "%s/files/%s", trash->trashpath, filename);
-	sprintf(trashinfopath, "%s/info/%s.trashinfo", trash->trashpath, filename);
+	sprintf(trashfilepath, "%s/files/%s", trash->trashdir, filename);
+	sprintf(trashinfopath, "%s/info/%s.trashinfo", trash->trashdir, filename);
 
 	// if trashfilepath or trashinfopath exits make a new ones
 	int i = 1;
