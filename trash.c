@@ -326,7 +326,6 @@ trashclean(Trash *trash)
 	asserttrash(trash);
 
 	char filepath[PATH_MAX];
-	char filename[PATH_MAX];
 	struct dirent *dp;
 
 	DIR *infodir = opendir(trash->infodir);
@@ -343,6 +342,7 @@ trashclean(Trash *trash)
 
 		// get the file name without the .trashinfo extension
 		int filenamelen = strlen(dp->d_name) - strlen(".trashinfo");
+		char filename[filenamelen + 1];
 		strncpy(filename, dp->d_name, filenamelen);
 		filename[filenamelen] = '\0';
 
@@ -373,7 +373,6 @@ trashremove(Trash *trash, char *pattern)
 
 	char infofilepath[PATH_MAX];
 	char filepath[PATH_MAX];
-	char filename[PATH_MAX];
 
 	struct dirent *dp;
 	struct trashinfo *trashinfo;
@@ -393,6 +392,7 @@ trashremove(Trash *trash, char *pattern)
 
 		// get the file name without the .trashinfo extension
 		int filenamelen = strlen(dp->d_name) - strlen(".trashinfo");
+		char filename[filenamelen + 1];
 		strncpy(filename, dp->d_name, filenamelen);
 		filename[filenamelen] = '\0';
 
