@@ -12,17 +12,6 @@
 #include "util.h"
 #include "trash.h"
 
-struct trashinfo *create_trashinfo();
-void free_trashinfo(struct trashinfo *trashinfo);
-
-struct trashinfo *readinfofile(const char *infofilepath);
-int writeinfofile(FILE *stream, const char *path);
-
-void asserttrash(Trash *trash);
-Trash *createtrash(const char *path);
-struct trashinfo *readTrash(Trash *trash);
-
-
 struct trashinfo {
 	char *deletedfilepath;
 	char *deletiondate;
@@ -36,6 +25,18 @@ struct trash {
 	char *filesdirpath;
 	char *infodirpath;
 };
+
+
+struct trashinfo *create_trashinfo();
+void free_trashinfo(struct trashinfo *trashinfo);
+
+struct trashinfo *readinfofile(const char *infofilepath);
+int writeinfofile(struct trashinfo *trashinfo);
+
+void asserttrash(Trash *trash);
+Trash *createtrash(const char *path);
+struct trashinfo *readTrash(Trash *trash);
+
 
 struct trashinfo *
 create_trashinfo()
@@ -137,23 +138,51 @@ readinfofile(const char *infofilepath)
 }
 
 int
-writeinfofile(FILE *stream, const char *path)
+writeinfofile(struct trashinfo *trashinfo)
 {
-	assert(stream != NULL && path != NULL);
-	time_t time_now = time(NULL);
-	char buf[1024];
-	int result;
+	FILE *trashinfofile = fopen(trashinfo->trashinfofilepath, "w");
+	if (!trashinfofile)
+		die("fopen: can't open %s:", trashinfo->trashinfofilepath);
 
-	if (!strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", localtime(&time_now))) {
-		return -1;
-	}
+	int result = fprintf(trashinfofile,
+					  "[Trash Info]\n"
+					  "Path=%s\n"
+					  "DeletionDate=%s\n",
+					  trashinfo->deletedfilepath, trashinfo->deletiondate);
 
-	result = fprintf(stream, "[Trash Info]\n"
-				"Path=%s\n"
-				"DeletionDate=%s\n",
-				path, buf);
+	fclose(trashinfofile);
 
 	return result;
+}
+
+char *
+getvalidtrashfilesfilename(
+	Trash *trash, const char *filename, char *buf, size_t bufsize)
+{
+	char trashfilesfilepath[PATH_MAX];
+	char trashinfofilepath[PATH_MAX];
+	struct stat statbuf;
+
+	sprintf(trashfilesfilepath, "%s/%s", trash->filesdirpath, filename);
+	sprintf(trashinfofilepath, "%s/%s.trashinfo", trash->infodirpath, filename);
+
+	int i = 1;
+	while (stat(trashfilesfilepath, &statbuf) == 0 ||
+		stat(trashinfofilepath, &statbuf) == 0) {
+		sprintf(trashfilesfilepath + strlen(trashfilesfilepath), "_%d", i);
+		trashinfofilepath[strlen(trashinfofilepath) - strlen(".trashinfo")] = '\0';
+		sprintf(trashinfofilepath + strlen(trashinfofilepath), "_%d.trashinfo", i);
+		if (strlen(trashinfofilepath) >= PATH_MAX)
+			die("file name is too long");
+		i++;
+	}
+
+	char *trashfilesfilename = basename(trashfilesfilepath);
+	if (strlen(trashfilesfilename) >= bufsize)
+		return NULL;
+
+	strcpy(buf, trashfilesfilename);
+	return buf;
 }
 
 void
@@ -275,6 +304,13 @@ trashput(Trash *trash, const char *path)
 {
 	asserttrash(trash);
 	assert(path != NULL);
+	time_t time_now = time(NULL);
+
+	char fullpath[PATH_MAX];
+	if (!realpath(path, fullpath))
+		die("realpath:");
+
+	path = fullpath;
 
 	struct stat statbuf;
 
@@ -282,45 +318,48 @@ trashput(Trash *trash, const char *path)
 	if (stat(path, &statbuf) < 0)
 		die("%s doesn't exit:", path);
 
+	struct trashinfo *trashinfo = create_trashinfo();
+
 	// get the basename of path
-	char pathcpy[strlen(path) + 1];
-	strcpy(pathcpy, path);
-	char *filename = basename(pathcpy);
+	char *path_copy = malloc((strlen(path) + 1) * sizeof(char));
+	strcpy(path_copy, path);
+	char *trashfilesfilename = basename(path_copy);
 
-	// make the new path which path get moved to
-	char trashfilepath[PATH_MAX];
-	char trashinfopath[PATH_MAX];
-	sprintf(trashfilepath, "%s/%s", trash->filesdirpath, filename);
-	sprintf(trashinfopath, "%s/%s.trashinfo", trash->infodirpath, filename);
+	char buf[PATH_MAX];
+	trashfilesfilename = getvalidtrashfilesfilename(trash,
+							 trashfilesfilename,
+							 buf, sizeof(buf));
 
-	// if trashfilepath or trashinfopath exits make a new ones
-	int i = 1;
-	while (stat(trashfilepath, &statbuf) == 0 ||
-			stat(trashinfopath, &statbuf) == 0) {
-		sprintf(trashfilepath + strlen(trashfilepath), "_%d", i);
-		trashinfopath[strlen(trashinfopath) - strlen(".trashinfo")] = '\0';
-		sprintf(trashinfopath + strlen(trashinfopath), "_%d.trashinfo", i);
-		if (strlen(trashinfopath) >= PATH_MAX)
-			die("file name is too long");
-		i++;
+
+	trashinfo->deletedfilepath = malloc((strlen(path) + 1) * sizeof(char));
+	trashinfo->trashfilesfilepath = malloc(
+			(strlen(trash->filesdirpath) + 1 +
+		   strlen(trashfilesfilename) + 1) * sizeof(char));
+	trashinfo->trashinfofilepath = malloc(
+			(strlen(trash->infodirpath) + 1 +
+			strlen(trashfilesfilename) +
+			strlen(".trashinfo") + 1)
+			* sizeof(char));
+	sprintf(trashinfo->trashfilesfilepath,
+		 "%s/%s", trash->filesdirpath, trashfilesfilename);
+	sprintf(trashinfo->trashinfofilepath,
+		 "%s/%s.trashinfo", trash->infodirpath, trashfilesfilename);
+	strcpy(trashinfo->deletedfilepath, path);
+
+	int deletiondatelen = 1024;
+	trashinfo->deletiondate = malloc(deletiondatelen * sizeof(char));
+	if (!strftime(trashinfo->deletiondate, deletiondatelen,
+			   "%Y-%m-%dT%H:%M:%S", localtime(&time_now))) {
+		die("strftime:");
 	}
 
-	FILE *infofile = fopen(trashinfopath, "w");
-	if (!infofile) {
-		die("can't open file %s:", trashinfopath);
-	}
-
-	char fullpath[PATH_MAX];
-	if (!realpath(path, fullpath))
-		die(":");
-
-	writeinfofile(infofile, fullpath);
+	writeinfofile(trashinfo);
 
 	// move path into Trash/file directory
-	if (rename(path, trashfilepath) < 0)
+	if (rename(path, trashinfo->trashfilesfilepath) < 0)
 		die("can't move the trash direcotry:");
 
-	fclose(infofile);
+	free_trashinfo(trashinfo);
 
 	return 0;
 }
