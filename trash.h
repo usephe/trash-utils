@@ -9,4 +9,5 @@ int trashput(Trash *, const char *);
 void trashlist(Trash *);
 void trashclean(Trash *);
 void trashremove(Trash *, char *);
+void trashrestore(Trash *, char *);
 #endif

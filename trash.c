@@ -12,24 +12,28 @@
 #include "util.h"
 #include "trash.h"
 
+struct trashinfo * readinfofile(const char *infofilepath);
+
 struct trashinfo {
-	char *filepath;
-	char *original_location;
+	char *deletedfilepath;
 	char *deletiondate;
-	int isvalid;
+	char *trashinfofilepath;
+	char *trashfilesfilepath;
 };
 
 struct trash {
-	char *trashdir;
-	char *filesdir;
-	char *infodir;
+	DIR *trashdir;
+	DIR *infodir;
+	char *filesdirpath;
+	char *infodirpath;
 };
 
 void
 asserttrash(Trash *trash)
 {
 	assert(trash != NULL);
-	assert(trash->filesdir != NULL && trash->infodir != NULL);
+	assert(trash->trashdir != NULL);
+	assert(trash->filesdirpath != NULL && trash->infodirpath != NULL);
 }
 
 void xmkdir(char *path) {
@@ -69,20 +73,26 @@ createtrash(const char *path)
 	}
 
 	trashdirlen = strlen(trashloc) + strlen("/Trash");
-	trash->trashdir = malloc(
-			(trashdirlen + 1) * sizeof(char));
-	sprintf(trash->trashdir, "%s%s", trashloc, "/Trash");
+	char trashpath[trashdirlen + 1];
+	sprintf(trashpath, "%s%s", trashloc, "/Trash");
 
-	trash->filesdir = malloc(
+	trash->filesdirpath = malloc(
 			(trashdirlen + strlen("/files") + 1) * sizeof(char));
-	sprintf(trash->filesdir, "%s%s", trash->trashdir, "/files");
+	sprintf(trash->filesdirpath, "%s%s", trashpath, "/files");
 
-	trash->infodir = malloc(
+	trash->infodirpath = malloc(
 			(trashdirlen + strlen("/info") + 1) * sizeof(char));
-	sprintf(trash->infodir, "%s%s", trash->trashdir, "/info");
+	sprintf(trash->infodirpath, "%s%s", trashpath, "/info");
 
-	xmkdir(trash->filesdir);
-	xmkdir(trash->infodir);
+	xmkdir(trash->filesdirpath);
+	xmkdir(trash->infodirpath);
+
+	trash->trashdir = opendir(trashpath);
+	if (!trash->trashdir)
+		die("opendir: can't open directory '%s':", trashpath);
+	trash->infodir = opendir(trash->infodirpath);
+	if (!trash->infodir)
+		die("opendir: can't open directory '%s':", trash->infodir);
 
 	return trash;
 }
@@ -99,10 +109,52 @@ closetrash(Trash *trash)
 {
 	asserttrash(trash);
 
-	free(trash->filesdir);
-	free(trash->infodir);
-	free(trash->trashdir);
+	if (closedir(trash->trashdir) < 0)
+		die("closedir:");
+
+	if (closedir(trash->infodir) < 0)
+		die("closedir:");
+
+	free(trash->infodirpath);
+	free(trash->filesdirpath);
 	free(trash);
+}
+
+struct trashinfo *
+readTrash(Trash *trash)
+{
+	asserttrash(trash);
+	struct trashinfo *trashinfo;
+	struct dirent *dp = NULL;
+
+	errno = 0;
+	while ((dp = readdir(trash->infodir)) != NULL) {
+		if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0)
+			continue;
+
+		if (!strendswith(dp->d_name, ".trashinfo"))
+			continue;
+
+		int infofilepathlen = strlen(trash->infodirpath) + 1 + strlen(dp->d_name);
+		char infofilepath[infofilepathlen + 1];
+		sprintf(infofilepath, "%s/%s", trash->infodirpath, dp->d_name);
+
+		errno = 0;
+		trashinfo = readinfofile(infofilepath);
+		if (!trashinfo) {
+			if (errno != 0)
+				die("readinfofile:");
+			else
+				die("readinfofile");
+		}
+
+		break;
+	}
+
+	if (dp == NULL && errno != 0)
+		die("readir:");
+
+	return dp != NULL ? trashinfo : NULL;
 }
 
 struct trashinfo *
@@ -111,8 +163,10 @@ create_trashinfo()
 	struct trashinfo *trashinfo = malloc(sizeof(*trashinfo));
 	if (!trashinfo)
 		die("malloc:");
-	trashinfo->filepath = trashinfo->deletiondate = NULL;
-	trashinfo->isvalid = 0;
+	trashinfo->deletedfilepath = NULL;
+	trashinfo->deletiondate = NULL;
+	trashinfo->trashinfofilepath = NULL;
+	trashinfo->trashfilesfilepath = NULL;
 
 	return trashinfo;
 }
@@ -120,8 +174,10 @@ create_trashinfo()
 void
 free_trashinfo(struct trashinfo *trashinfo)
 {
-	free(trashinfo->filepath);
+	free(trashinfo->deletedfilepath);
 	free(trashinfo->deletiondate);
+	free(trashinfo->trashinfofilepath);
+	free(trashinfo->trashfilesfilepath);
 
 	free(trashinfo);
 }
@@ -166,12 +222,13 @@ trashput(Trash *trash, const char *path)
 	// make the new path which path get moved to
 	char trashfilepath[PATH_MAX];
 	char trashinfopath[PATH_MAX];
-	sprintf(trashfilepath, "%s/files/%s", trash->trashdir, filename);
-	sprintf(trashinfopath, "%s/info/%s.trashinfo", trash->trashdir, filename);
+	sprintf(trashfilepath, "%s/%s", trash->filesdirpath, filename);
+	sprintf(trashinfopath, "%s/%s.trashinfo", trash->infodirpath, filename);
 
 	// if trashfilepath or trashinfopath exits make a new ones
 	int i = 1;
-	while (stat(trashfilepath, &statbuf) == 0 || stat(trashinfopath, &statbuf) == 0) {
+	while (stat(trashfilepath, &statbuf) == 0 ||
+			stat(trashinfopath, &statbuf) == 0) {
 		sprintf(trashfilepath + strlen(trashfilepath), "_%d", i);
 		trashinfopath[strlen(trashinfopath) - strlen(".trashinfo")] = '\0';
 		sprintf(trashinfopath + strlen(trashinfopath), "_%d.trashinfo", i);
@@ -201,23 +258,25 @@ trashput(Trash *trash, const char *path)
 }
 
 struct trashinfo *
-readinfofile(FILE *infofile)
+readinfofile(const char *infofilepath)
 {
+	if (!strendswith(infofilepath, ".trashinfo"))
+		return NULL;
+
 	struct trashinfo *trashinfo = create_trashinfo();
 	struct stat statbuf;
 
-	int fd = fileno(infofile);
-	if (fd < 0)
-		return NULL;
+	FILE *infofile = fopen(infofilepath, "r");
+	if (!infofile)
+		die("fopen:");
 
-	if (fstat(fd, &statbuf) < 0)
+	if (stat(infofilepath, &statbuf) < 0)
 		die("stat:");
 
 	if (!S_ISREG(statbuf.st_mode))
 		return NULL;
 
-
-	char *filepath = NULL;
+	char *deletedfilepath = NULL;
 	char *deletiondate = NULL;
 
 	char *line = NULL;
@@ -225,99 +284,74 @@ readinfofile(FILE *infofile)
 	ssize_t nread;
 	while ((nread = getline(&line, &len, infofile)) != -1) {
 		if (strncmp(line, "Path=", strlen("Path=")) == 0) {
-			filepath = malloc((nread + 1) * sizeof(*filepath));
-			strcpy(filepath, line);
-		} else if (strncmp(line, "DeletionDate=", strlen("DeletionDate=")) == 0) {
-			deletiondate = malloc((nread + 1) * sizeof(*filepath));
+			deletedfilepath = malloc((nread + 1) * sizeof(*deletedfilepath));
+			strcpy(deletedfilepath, line);
+		} else if (strncmp(line, "DeletionDate=",
+					strlen("DeletionDate=")) == 0) {
+			deletiondate = malloc((nread + 1) * sizeof(*deletedfilepath));
 			strcpy(deletiondate, line);
 		}
 	};
 	free(line);
+	fclose(infofile);
 
-	if (!filepath || !deletiondate)
+	if (!deletedfilepath || !deletiondate)
 		return NULL;
 
-	if (filepath[strlen(filepath) - 1] == '\n')
-		filepath[strlen(filepath) - 1] = '\0';
+	if (deletedfilepath[strlen(deletedfilepath) - 1] == '\n')
+		deletedfilepath[strlen(deletedfilepath) - 1] = '\0';
 
 	if (deletiondate[strlen(deletiondate) - 1] == '\n')
 		deletiondate[strlen(deletiondate) - 1] = '\0';
 
 	// Remove the prefix Path= and DeletionDate=
-	memmove(filepath, filepath + strlen("Path="), strlen(filepath) - strlen("Path=") + 1);
+	memmove(deletedfilepath, deletedfilepath + strlen("Path="),
+			strlen(deletedfilepath) - strlen("Path=") + 1);
 	memmove(deletiondate,
 			deletiondate + strlen("DeletionDate="),
 			strlen(deletiondate) - strlen("DeletionDate=") + 1);
 
-	trashinfo->filepath = filepath;
+	char infofilepath_copy[strlen(infofilepath) + 1];
+	strcpy(infofilepath_copy, infofilepath);
+	char *infofilename = basename(infofilepath_copy);
+	char *infodirpath = dirname(infofilepath_copy);
+	char *trashdirpath = dirname(infodirpath);
+
+	int trashfilenamelen = strlen(infofilename) - strlen(".trashinfo");
+	char trashfilename[trashfilenamelen + 1];
+	strncpy(trashfilename, infofilename, trashfilenamelen);
+	trashfilename[trashfilenamelen] = '\0';
+
+	trashinfo->deletedfilepath = deletedfilepath;
 	trashinfo->deletiondate = deletiondate;
+	trashinfo->trashinfofilepath = malloc((strlen(infofilepath) + 1) * sizeof(char));
+	strcpy(trashinfo->trashinfofilepath, infofilepath);
+	trashinfo->trashfilesfilepath = malloc((strlen(trashdirpath) + strlen("/files/") + trashfilenamelen + 1) * sizeof(char));
+	sprintf(trashinfo->trashfilesfilepath, "%s%s%s", trashdirpath, "/files/", trashfilename);
 
 	return trashinfo;
 }
 
-int
-strendswith(char *str, char *suffix)
+void
+trashrestore(Trash *trash, char *pattern)
 {
-	assert(str != NULL && suffix != NULL);
-	int srclen = strlen(str);
-	int suffixlen = strlen(suffix);
+	assert(0 && "trashrestore: not implemented");
+	asserttrash(trash);
+	assert(pattern != NULL);
 
-	if (suffixlen > srclen)
-		return 0;
-
-	return strcmp(str + (srclen - suffixlen), suffix) == 0;
 }
-
 
 void
 trashlist(Trash *trash)
 {
 	asserttrash(trash);
-
-	char infofilepath[PATH_MAX];
-	struct dirent *dp;
 	struct trashinfo *trashinfo;
-	FILE *infofile;
 
-	DIR *infodir = opendir(trash->infodir);
-	if (!infodir)
-		die("opendir:");
-
-	errno = 0;
-	while ((dp = readdir(infodir)) != NULL) {
-		if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0)
-			continue;
-
-		if (!strendswith(dp->d_name, ".trashinfo"))
-			continue;
-
-		sprintf(infofilepath, "%s/%s", trash->infodir, dp->d_name);
-
-		infofile = fopen(infofilepath, "r");
-		if (!infofile)
-			die("fopen:");
-
-		errno = 0;
-		trashinfo = readinfofile(infofile);
-		if (!trashinfo) {
-			if (errno != 0)
-				die("readinfofile:");
-			else
-				die("readinfofile");
-		}
-
-		printf("%s %s\n", trashinfo->deletiondate, trashinfo->filepath);
+	while ((trashinfo = readTrash(trash)) != NULL) {
+		printf("%s %s\n", trashinfo->deletiondate, trashinfo->deletedfilepath);
 
 		free_trashinfo(trashinfo);
-		fclose(infofile);
-
-		errno = 0;
 	}
-
-	if (errno != 0)
-		die("readdir:");
-
-	closedir(infodir);
 }
 
 void
@@ -325,44 +359,16 @@ trashclean(Trash *trash)
 {
 	asserttrash(trash);
 
-	char filepath[PATH_MAX];
-	struct dirent *dp;
-
-	DIR *infodir = opendir(trash->infodir);
-	if (!infodir)
-		die("opendir:");
-
-	errno = 0;
-	while ((dp = readdir(infodir)) != NULL) {
-		if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
-			continue;
-
-		if (!strendswith(dp->d_name, ".trashinfo"))
-			continue;
-
-		// get the file name without the .trashinfo extension
-		int filenamelen = strlen(dp->d_name) - strlen(".trashinfo");
-		char filename[filenamelen + 1];
-		strncpy(filename, dp->d_name, filenamelen);
-		filename[filenamelen] = '\0';
-
-		sprintf(filepath, "%s/%s.trashinfo", trash->infodir, filename);
-		if (remove(filepath) < 0)
+	struct trashinfo *trashinfo;
+	while ((trashinfo = readTrash(trash)) != NULL) {
+		if (remove(trashinfo->trashfilesfilepath) < 0)
 			die("remove:");
-		printf("%s\n", filepath);
+		printf("removed %s\n", trashinfo->trashfilesfilepath);
 
-		sprintf(filepath, "%s/%s", trash->filesdir, filename);
-		if (remove(filepath) < 0)
+		if (remove(trashinfo->trashinfofilepath) < 0)
 			die("remove:");
-		printf("%s\n", filepath);
-
-		errno = 0;
+		printf("removed %s\n", trashinfo->trashinfofilepath);
 	}
-
-	if (errno != 0)
-		die("readdir:");
-
-	closedir(infodir);
 }
 
 void
@@ -371,73 +377,26 @@ trashremove(Trash *trash, char *pattern)
 	asserttrash(trash);
 	assert(pattern != NULL);
 
-	char infofilepath[PATH_MAX];
-	char filepath[PATH_MAX];
-
-	struct dirent *dp;
 	struct trashinfo *trashinfo;
-	FILE *infofile;
 
-	DIR *infodir = opendir(trash->infodir);
-	if (!infodir)
-		die("opendir:");
-
-	errno = 0;
-	while ((dp = readdir(infodir)) != NULL) {
-		if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0)
-			continue;
-
-		if (!strendswith(dp->d_name, ".trashinfo"))
-			continue;
-
-		// get the file name without the .trashinfo extension
-		int filenamelen = strlen(dp->d_name) - strlen(".trashinfo");
-		char filename[filenamelen + 1];
-		strncpy(filename, dp->d_name, filenamelen);
-		filename[filenamelen] = '\0';
-
-		sprintf(infofilepath, "%s/%s", trash->infodir, dp->d_name);
-		sprintf(filepath, "%s/%s", trash->filesdir, filename);
-
-		infofile = fopen(infofilepath, "r");
-		if (!infofile)
-			die("fopen:");
-
-		trashinfo = readinfofile(infofile);
-
-		errno = 0;
-		if (!trashinfo) {
-			if (errno != 0)
-				die("readinfofile:");
-			else
-				die("readinfofile");
-		}
-
-		char *filep = strdup(trashinfo->filepath);
-		char *original_filename = basename(filep);
+	while ((trashinfo = readTrash(trash)) != NULL) {
+		char deletedfilepath_copy[strlen(trashinfo->deletedfilepath) + 1];
+		strcpy(deletedfilepath_copy, trashinfo->deletedfilepath);
+		char *deletedfilename = basename(deletedfilepath_copy);
 
 		// TODO: support removing none empty directories from Trash
-		if (!strcmp(original_filename, pattern)) {
-			if (remove(filepath) < 0)
+		if (!strcmp(deletedfilename, pattern)) {
+			if (remove(trashinfo->trashfilesfilepath) < 0)
 				die("remove:");
-			printf("trashfile path: %s\n", filepath);
+			printf("trashfilesfilepath: %s\n", trashinfo->trashfilesfilepath);
 
-			if (remove(infofilepath) < 0)
+			if (remove(trashinfo->trashinfofilepath) < 0)
 				die("remove:");
-			printf("trashinfo path: %s\n", infofilepath);
+			printf("trashinfofilepath: %s\n", trashinfo->trashinfofilepath);
 
 			printf("\n");
 		}
 
-		free(filep);
 		free_trashinfo(trashinfo);
-		fclose(infofile);
-
-		errno = 0;
 	}
-
-	if (errno != 0)
-		die("readdir:");
-
-	closedir(infodir);
 }

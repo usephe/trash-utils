@@ -1,8 +1,9 @@
+#include <assert.h>
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 
 #include "util.h"
 
@@ -30,4 +31,17 @@ xgetenv(const char *const env, const char *fallback) {
 	const char *value = getenv(env);
 
 	return value && value[0] ? value : fallback;
+}
+
+int
+strendswith(const char *str, const char *suffix)
+{
+	assert(str != NULL && suffix != NULL);
+	int srclen = strlen(str);
+	int suffixlen = strlen(suffix);
+
+	if (suffixlen > srclen)
+		return 0;
+
+	return strcmp(str + (srclen - suffixlen), suffix) == 0;
 }
