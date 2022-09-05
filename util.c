@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "util.h"
 
@@ -44,4 +45,21 @@ strendswith(const char *str, const char *suffix)
 		return 0;
 
 	return strcmp(str + (srclen - suffixlen), suffix) == 0;
+}
+
+void
+xmkdir(char *path)
+{
+    char *sep = strrchr(path, '/');
+    if(sep != NULL) {
+        *sep = '\0';
+        xmkdir(path);
+        *sep = '/';
+    }
+
+	if (!path || !path[0])
+		return;
+
+	if(mkdir(path, 0777) && errno != EEXIST)
+		die("mkdir '%s':", path);
 }

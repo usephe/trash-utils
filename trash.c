@@ -12,7 +12,16 @@
 #include "util.h"
 #include "trash.h"
 
-struct trashinfo * readinfofile(const char *infofilepath);
+struct trashinfo *create_trashinfo();
+void free_trashinfo(struct trashinfo *trashinfo);
+
+struct trashinfo *readinfofile(const char *infofilepath);
+int writeinfofile(FILE *stream, const char *path);
+
+void asserttrash(Trash *trash);
+Trash *createtrash(const char *path);
+struct trashinfo *readTrash(Trash *trash);
+
 
 struct trashinfo {
 	char *deletedfilepath;
@@ -28,27 +37,131 @@ struct trash {
 	char *infodirpath;
 };
 
+struct trashinfo *
+create_trashinfo()
+{
+	struct trashinfo *trashinfo = malloc(sizeof(*trashinfo));
+	if (!trashinfo)
+		die("malloc:");
+	trashinfo->deletedfilepath = NULL;
+	trashinfo->deletiondate = NULL;
+	trashinfo->trashinfofilepath = NULL;
+	trashinfo->trashfilesfilepath = NULL;
+
+	return trashinfo;
+}
+
+void free_trashinfo(struct trashinfo *trashinfo)
+{
+	free(trashinfo->deletedfilepath);
+	free(trashinfo->deletiondate);
+	free(trashinfo->trashinfofilepath);
+	free(trashinfo->trashfilesfilepath);
+
+	free(trashinfo);
+}
+
+struct trashinfo *
+readinfofile(const char *infofilepath)
+{
+	if (!strendswith(infofilepath, ".trashinfo"))
+		return NULL;
+
+	struct trashinfo *trashinfo = create_trashinfo();
+	struct stat statbuf;
+
+	FILE *infofile = fopen(infofilepath, "r");
+	if (!infofile)
+		die("fopen:");
+
+	if (stat(infofilepath, &statbuf) < 0)
+		die("stat:");
+
+	if (!S_ISREG(statbuf.st_mode))
+		return NULL;
+
+	char *deletedfilepath = NULL;
+	char *deletiondate = NULL;
+
+	char *line = NULL;
+	size_t len = 0;
+	ssize_t nread;
+	while ((nread = getline(&line, &len, infofile)) != -1) {
+		if (strncmp(line, "Path=", strlen("Path=")) == 0) {
+			deletedfilepath = malloc((nread + 1) * sizeof(*deletedfilepath));
+			strcpy(deletedfilepath, line);
+		} else if (strncmp(line, "DeletionDate=",
+					strlen("DeletionDate=")) == 0) {
+			deletiondate = malloc((nread + 1) * sizeof(*deletedfilepath));
+			strcpy(deletiondate, line);
+		}
+	};
+	free(line);
+	fclose(infofile);
+
+	if (!deletedfilepath || !deletiondate)
+		return NULL;
+
+	if (deletedfilepath[strlen(deletedfilepath) - 1] == '\n')
+		deletedfilepath[strlen(deletedfilepath) - 1] = '\0';
+
+	if (deletiondate[strlen(deletiondate) - 1] == '\n')
+		deletiondate[strlen(deletiondate) - 1] = '\0';
+
+	// Remove the prefix Path= and DeletionDate=
+	memmove(deletedfilepath, deletedfilepath + strlen("Path="),
+			strlen(deletedfilepath) - strlen("Path=") + 1);
+	memmove(deletiondate,
+			deletiondate + strlen("DeletionDate="),
+			strlen(deletiondate) - strlen("DeletionDate=") + 1);
+
+	char infofilepath_copy[strlen(infofilepath) + 1];
+	strcpy(infofilepath_copy, infofilepath);
+	char *infofilename = basename(infofilepath_copy);
+	char *infodirpath = dirname(infofilepath_copy);
+	char *trashdirpath = dirname(infodirpath);
+
+	int trashfilenamelen = strlen(infofilename) - strlen(".trashinfo");
+	char trashfilename[trashfilenamelen + 1];
+	strncpy(trashfilename, infofilename, trashfilenamelen);
+	trashfilename[trashfilenamelen] = '\0';
+
+	trashinfo->deletedfilepath = deletedfilepath;
+	trashinfo->deletiondate = deletiondate;
+	trashinfo->trashinfofilepath = malloc((strlen(infofilepath) + 1) * sizeof(char));
+	strcpy(trashinfo->trashinfofilepath, infofilepath);
+	trashinfo->trashfilesfilepath = malloc((strlen(trashdirpath) + strlen("/files/") + trashfilenamelen + 1) * sizeof(char));
+	sprintf(trashinfo->trashfilesfilepath, "%s%s%s", trashdirpath, "/files/", trashfilename);
+
+	return trashinfo;
+}
+
+int
+writeinfofile(FILE *stream, const char *path)
+{
+	assert(stream != NULL && path != NULL);
+	time_t time_now = time(NULL);
+	char buf[1024];
+	int result;
+
+	if (!strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", localtime(&time_now))) {
+		return -1;
+	}
+
+	result = fprintf(stream, "[Trash Info]\n"
+				"Path=%s\n"
+				"DeletionDate=%s\n",
+				path, buf);
+
+	return result;
+}
+
 void
 asserttrash(Trash *trash)
 {
 	assert(trash != NULL);
 	assert(trash->trashdir != NULL);
 	assert(trash->filesdirpath != NULL && trash->infodirpath != NULL);
-}
-
-void xmkdir(char *path) {
-    char *sep = strrchr(path, '/');
-    if(sep != NULL) {
-        *sep = '\0';
-        xmkdir(path);
-        *sep = '/';
-    }
-
-	if (!path || !path[0])
-		return;
-
-	if(mkdir(path, 0777) && errno != EEXIST)
-		die("mkdir '%s':", path);
 }
 
 // if path is NULL used XDG_DATA_HOME/Trash as the trash location instead
@@ -157,51 +270,6 @@ readTrash(Trash *trash)
 	return dp != NULL ? trashinfo : NULL;
 }
 
-struct trashinfo *
-create_trashinfo()
-{
-	struct trashinfo *trashinfo = malloc(sizeof(*trashinfo));
-	if (!trashinfo)
-		die("malloc:");
-	trashinfo->deletedfilepath = NULL;
-	trashinfo->deletiondate = NULL;
-	trashinfo->trashinfofilepath = NULL;
-	trashinfo->trashfilesfilepath = NULL;
-
-	return trashinfo;
-}
-
-void
-free_trashinfo(struct trashinfo *trashinfo)
-{
-	free(trashinfo->deletedfilepath);
-	free(trashinfo->deletiondate);
-	free(trashinfo->trashinfofilepath);
-	free(trashinfo->trashfilesfilepath);
-
-	free(trashinfo);
-}
-
-int
-writeinfofile(FILE *stream, const char *path)
-{
-	assert(stream != NULL && path != NULL);
-	time_t time_now = time(NULL);
-	char buf[1024];
-	int result;
-
-	if (!strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", localtime(&time_now))) {
-		return -1;
-	}
-
-	result = fprintf(stream, "[Trash Info]\n"
-				"Path=%s\n"
-				"DeletionDate=%s\n",
-				path, buf);
-
-	return result;
-}
-
 int
 trashput(Trash *trash, const char *path)
 {
@@ -255,81 +323,6 @@ trashput(Trash *trash, const char *path)
 	fclose(infofile);
 
 	return 0;
-}
-
-struct trashinfo *
-readinfofile(const char *infofilepath)
-{
-	if (!strendswith(infofilepath, ".trashinfo"))
-		return NULL;
-
-	struct trashinfo *trashinfo = create_trashinfo();
-	struct stat statbuf;
-
-	FILE *infofile = fopen(infofilepath, "r");
-	if (!infofile)
-		die("fopen:");
-
-	if (stat(infofilepath, &statbuf) < 0)
-		die("stat:");
-
-	if (!S_ISREG(statbuf.st_mode))
-		return NULL;
-
-	char *deletedfilepath = NULL;
-	char *deletiondate = NULL;
-
-	char *line = NULL;
-	size_t len = 0;
-	ssize_t nread;
-	while ((nread = getline(&line, &len, infofile)) != -1) {
-		if (strncmp(line, "Path=", strlen("Path=")) == 0) {
-			deletedfilepath = malloc((nread + 1) * sizeof(*deletedfilepath));
-			strcpy(deletedfilepath, line);
-		} else if (strncmp(line, "DeletionDate=",
-					strlen("DeletionDate=")) == 0) {
-			deletiondate = malloc((nread + 1) * sizeof(*deletedfilepath));
-			strcpy(deletiondate, line);
-		}
-	};
-	free(line);
-	fclose(infofile);
-
-	if (!deletedfilepath || !deletiondate)
-		return NULL;
-
-	if (deletedfilepath[strlen(deletedfilepath) - 1] == '\n')
-		deletedfilepath[strlen(deletedfilepath) - 1] = '\0';
-
-	if (deletiondate[strlen(deletiondate) - 1] == '\n')
-		deletiondate[strlen(deletiondate) - 1] = '\0';
-
-	// Remove the prefix Path= and DeletionDate=
-	memmove(deletedfilepath, deletedfilepath + strlen("Path="),
-			strlen(deletedfilepath) - strlen("Path=") + 1);
-	memmove(deletiondate,
-			deletiondate + strlen("DeletionDate="),
-			strlen(deletiondate) - strlen("DeletionDate=") + 1);
-
-	char infofilepath_copy[strlen(infofilepath) + 1];
-	strcpy(infofilepath_copy, infofilepath);
-	char *infofilename = basename(infofilepath_copy);
-	char *infodirpath = dirname(infofilepath_copy);
-	char *trashdirpath = dirname(infodirpath);
-
-	int trashfilenamelen = strlen(infofilename) - strlen(".trashinfo");
-	char trashfilename[trashfilenamelen + 1];
-	strncpy(trashfilename, infofilename, trashfilenamelen);
-	trashfilename[trashfilenamelen] = '\0';
-
-	trashinfo->deletedfilepath = deletedfilepath;
-	trashinfo->deletiondate = deletiondate;
-	trashinfo->trashinfofilepath = malloc((strlen(infofilepath) + 1) * sizeof(char));
-	strcpy(trashinfo->trashinfofilepath, infofilepath);
-	trashinfo->trashfilesfilepath = malloc((strlen(trashdirpath) + strlen("/files/") + trashfilenamelen + 1) * sizeof(char));
-	sprintf(trashinfo->trashfilesfilepath, "%s%s%s", trashdirpath, "/files/", trashfilename);
-
-	return trashinfo;
 }
 
 void
