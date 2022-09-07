@@ -35,6 +35,7 @@ int writeinfofile(struct trashent *trashent);
 
 void asserttrash(Trash *trash);
 Trash *createtrash(const char *path);
+void rewindtrash(Trash *trash);
 struct trashent *readTrash(Trash *trash);
 
 
@@ -262,6 +263,13 @@ closetrash(Trash *trash)
 	free(trash);
 }
 
+void
+rewindtrash(Trash *trash)
+{
+	asserttrash(trash);
+	rewinddir(trash->infodir);
+}
+
 struct trashent *
 readTrash(Trash *trash)
 {
@@ -376,6 +384,9 @@ void
 trashlist(Trash *trash)
 {
 	asserttrash(trash);
+
+	rewindtrash(trash);
+
 	struct trashent *trashent;
 
 	while ((trashent = readTrash(trash)) != NULL) {
@@ -389,6 +400,8 @@ void
 trashclean(Trash *trash)
 {
 	asserttrash(trash);
+
+	rewindtrash(trash);
 
 	struct trashent *trashent;
 	while ((trashent = readTrash(trash)) != NULL) {
@@ -407,6 +420,8 @@ trashremove(Trash *trash, char *pattern)
 {
 	asserttrash(trash);
 	assert(pattern != NULL);
+
+	rewindtrash(trash);
 
 	struct trashent *trashent;
 
