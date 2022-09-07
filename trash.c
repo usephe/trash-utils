@@ -190,7 +190,10 @@ void
 asserttrash(Trash *trash)
 {
 	assert(trash != NULL);
+
 	assert(trash->trashdir != NULL);
+	assert(trash->infodir != NULL);
+
 	assert(trash->filesdirpath != NULL && trash->infodirpath != NULL);
 }
 
