@@ -74,7 +74,7 @@ readinfofile(const char *infofilepath)
 	if (!infofile)
 		die("fopen:");
 
-	if (stat(infofilepath, &statbuf) < 0)
+	if (lstat(infofilepath, &statbuf) < 0)
 		die("stat:");
 
 	if (!S_ISREG(statbuf.st_mode))
