@@ -160,14 +160,12 @@ getvalidtrashfilesfilename(
 {
 	char trashfilesfilepath[PATH_MAX];
 	char trashinfofilepath[PATH_MAX];
-	struct stat statbuf;
 
 	sprintf(trashfilesfilepath, "%s/%s", trash->filesdirpath, filename);
 	sprintf(trashinfofilepath, "%s/%s.trashinfo", trash->infodirpath, filename);
 
 	int i = 1;
-	while (stat(trashfilesfilepath, &statbuf) == 0 ||
-		stat(trashinfofilepath, &statbuf) == 0) {
+	while (file_exists(trashfilesfilepath) || file_exists(trashinfofilepath)) {
 		sprintf(trashfilesfilepath + strlen(trashfilesfilepath), "_%d", i);
 		trashinfofilepath[strlen(trashinfofilepath) - strlen(".trashinfo")] = '\0';
 		sprintf(trashinfofilepath + strlen(trashinfofilepath), "_%d.trashinfo", i);
@@ -321,10 +319,8 @@ trashput(Trash *trash, const char *path)
 
 	path = fullpath;
 
-	struct stat statbuf;
-
 	// check if the path exists
-	if (stat(path, &statbuf) < 0)
+	if (!file_exists(path))
 		die("%s doesn't exit:", path);
 
 	struct trashent *trashent = createtrashent();

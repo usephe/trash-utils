@@ -9,4 +9,6 @@ const char *xgetenv(const char *const env, const char *fallback);
 int strendswith(const char *str, const char *suffix);
 
 void xmkdir(char *path);
+
+int file_exists(const char *file);
 #endif

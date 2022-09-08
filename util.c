@@ -73,3 +73,10 @@ xmkdir(char *path)
 	if(mkdir(path, 0777) && errno != EEXIST)
 		die("mkdir '%s':", path);
 }
+
+int
+file_exists(const char *file)
+{
+	struct stat sb;
+	return lstat(file, &sb) == 0;
+}
