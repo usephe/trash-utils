@@ -42,9 +42,7 @@ struct trashent *readTrash(Trash *trash);
 struct trashent *
 createtrashent()
 {
-	struct trashent *trashent = malloc(sizeof(*trashent));
-	if (!trashent)
-		die("malloc:");
+	struct trashent *trashent = xmalloc(sizeof(*trashent));
 	trashent->deletedfilepath = NULL;
 	trashent->deletiondate = NULL;
 	trashent->trashinfofilepath = NULL;
@@ -90,11 +88,11 @@ readinfofile(const char *infofilepath)
 	ssize_t nread;
 	while ((nread = getline(&line, &len, infofile)) != -1) {
 		if (strncmp(line, "Path=", strlen("Path=")) == 0) {
-			deletedfilepath = malloc((nread + 1) * sizeof(*deletedfilepath));
+			deletedfilepath = xmalloc((nread + 1) * sizeof(*deletedfilepath));
 			strcpy(deletedfilepath, line);
 		} else if (strncmp(line, "DeletionDate=",
 					strlen("DeletionDate=")) == 0) {
-			deletiondate = malloc((nread + 1) * sizeof(*deletedfilepath));
+			deletiondate = xmalloc((nread + 1) * sizeof(*deletedfilepath));
 			strcpy(deletiondate, line);
 		}
 	};
@@ -130,9 +128,9 @@ readinfofile(const char *infofilepath)
 
 	trashent->deletedfilepath = deletedfilepath;
 	trashent->deletiondate = deletiondate;
-	trashent->trashinfofilepath = malloc((strlen(infofilepath) + 1) * sizeof(char));
+	trashent->trashinfofilepath = xmalloc((strlen(infofilepath) + 1) * sizeof(char));
 	strcpy(trashent->trashinfofilepath, infofilepath);
-	trashent->trashfilesfilepath = malloc((strlen(trashdirpath) + strlen("/files/") + trashfilenamelen + 1) * sizeof(char));
+	trashent->trashfilesfilepath = xmalloc((strlen(trashdirpath) + strlen("/files/") + trashfilenamelen + 1) * sizeof(char));
 	sprintf(trashent->trashfilesfilepath, "%s%s%s", trashdirpath, "/files/", trashfilename);
 
 	return trashent;
@@ -201,7 +199,7 @@ asserttrash(Trash *trash)
 Trash *
 createtrash(const char *path)
 {
-	Trash *trash = malloc(sizeof(*trash));
+	Trash *trash = xmalloc(sizeof(*trash));
 	char trashloc[PATH_MAX + 1];
 	int trashdirlen = 0;
 
@@ -222,11 +220,11 @@ createtrash(const char *path)
 	char trashpath[trashdirlen + 1];
 	sprintf(trashpath, "%s%s", trashloc, "/Trash");
 
-	trash->filesdirpath = malloc(
+	trash->filesdirpath = xmalloc(
 			(trashdirlen + strlen("/files") + 1) * sizeof(char));
 	sprintf(trash->filesdirpath, "%s%s", trashpath, "/files");
 
-	trash->infodirpath = malloc(
+	trash->infodirpath = xmalloc(
 			(trashdirlen + strlen("/info") + 1) * sizeof(char));
 	sprintf(trash->infodirpath, "%s%s", trashpath, "/info");
 
@@ -332,7 +330,7 @@ trashput(Trash *trash, const char *path)
 	struct trashent *trashent = createtrashent();
 
 	// get the basename of path
-	char *path_copy = malloc((strlen(path) + 1) * sizeof(char));
+	char *path_copy = xmalloc((strlen(path) + 1) * sizeof(char));
 	strcpy(path_copy, path);
 	char *trashfilesfilename = basename(path_copy);
 
@@ -342,11 +340,11 @@ trashput(Trash *trash, const char *path)
 							 buf, sizeof(buf));
 
 
-	trashent->deletedfilepath = malloc((strlen(path) + 1) * sizeof(char));
-	trashent->trashfilesfilepath = malloc(
+	trashent->deletedfilepath = xmalloc((strlen(path) + 1) * sizeof(char));
+	trashent->trashfilesfilepath = xmalloc(
 			(strlen(trash->filesdirpath) + 1 +
 		   strlen(trashfilesfilename) + 1) * sizeof(char));
-	trashent->trashinfofilepath = malloc(
+	trashent->trashinfofilepath = xmalloc(
 			(strlen(trash->infodirpath) + 1 +
 			strlen(trashfilesfilename) +
 			strlen(".trashinfo") + 1)
@@ -358,7 +356,7 @@ trashput(Trash *trash, const char *path)
 	strcpy(trashent->deletedfilepath, path);
 
 	int deletiondatelen = 1024;
-	trashent->deletiondate = malloc(deletiondatelen * sizeof(char));
+	trashent->deletiondate = xmalloc(deletiondatelen * sizeof(char));
 	if (!strftime(trashent->deletiondate, deletiondatelen,
 			   "%Y-%m-%dT%H:%M:%S", localtime(&time_now))) {
 		die("strftime:");

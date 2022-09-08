@@ -27,6 +27,16 @@ die(const char *fmt, ...)
 	exit(EXIT_FAILURE);
 }
 
+void *
+xmalloc(size_t size)
+{
+	void *p = malloc(size);
+	if (!p)
+		die("malloc:");
+
+	return p;
+}
+
 const char *
 xgetenv(const char *const env, const char *fallback) {
 	const char *value = getenv(env);
