@@ -29,6 +29,8 @@ struct trash {
 
 struct trashent *createtrashent();
 void freetrashent(struct trashent *trashent);
+void deletetrashent(struct trashent *trashent);
+void restoretrashent(struct trashent *trashent);
 
 struct trashent *readinfofile(const char *infofilepath);
 int writeinfofile(struct trashent *trashent);
@@ -59,6 +61,27 @@ void freetrashent(struct trashent *trashent)
 	free(trashent->trashfilesfilepath);
 
 	free(trashent);
+}
+
+void
+deletetrashent(struct trashent *trashent)
+{
+	if (remove(trashent->trashfilesfilepath) < 0)
+		if (errno != ENOENT)
+			die("remove:");
+
+	if (remove(trashent->trashinfofilepath) < 0)
+		die("remove: can't remove file %s:", trashent->trashinfofilepath);
+}
+
+void
+restoretrashent(struct trashent *trashent)
+{
+	if (file_exists(trashent->deletedfilepath))
+		die("Refusing to overwite existing file %s", trashent->deletedfilepath);
+
+	if (rename(trashent->trashfilesfilepath, trashent->deletedfilepath) < 0)
+		die("can't move the trash direcotry:");
 }
 
 struct trashent *
@@ -372,9 +395,27 @@ trashput(Trash *trash, const char *path)
 void
 trashrestore(Trash *trash, char *pattern)
 {
-	assert(0 && "trashrestore: not implemented");
 	asserttrash(trash);
 	assert(pattern != NULL);
+
+	rewindtrash(trash);
+
+	struct trashent *trashent;
+
+	while ((trashent = readTrash(trash))) {
+		char deletedfilepath_copy[strlen(trashent->deletedfilepath) + 1];
+		strcpy(deletedfilepath_copy, trashent->deletedfilepath);
+		char *deletedfilename = basename(deletedfilepath_copy);
+
+		if (!strcmp(deletedfilename, pattern)) {
+			restoretrashent(trashent);
+			deletetrashent(trashent);
+			printf("restore: %s\n", trashent->deletedfilepath);
+			break;
+		}
+
+		freetrashent(trashent);
+	}
 }
 
 void
@@ -401,15 +442,8 @@ trashclean(Trash *trash)
 	rewindtrash(trash);
 
 	struct trashent *trashent;
-	while ((trashent = readTrash(trash)) != NULL) {
-		if (remove(trashent->trashfilesfilepath) < 0)
-			die("remove:");
-		printf("removed %s\n", trashent->trashfilesfilepath);
-
-		if (remove(trashent->trashinfofilepath) < 0)
-			die("remove:");
-		printf("removed %s\n", trashent->trashinfofilepath);
-	}
+	while ((trashent = readTrash(trash)) != NULL)
+		deletetrashent(trashent);
 }
 
 void

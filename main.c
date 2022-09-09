@@ -5,7 +5,7 @@
 #include "trash.h"
 
 
-char *arguments = "[-lcr] [file...]";
+char *arguments = "[-lcrR] [file...]";
 
 int
 main(int argc, char *argv[])
@@ -16,7 +16,7 @@ main(int argc, char *argv[])
 	Trash *trash = opentrash(NULL);
 
 	int opt;
-	while ((opt = getopt(argc, argv, "lcr")) != -1) {
+	while ((opt = getopt(argc, argv, "lcrR")) != -1) {
 		switch (opt) {
 		case 'l':
 			if (argc > 2)
@@ -29,6 +29,12 @@ main(int argc, char *argv[])
 			trashclean(trash);
 			break;
 		case 'r':
+			if (argc > 3)
+				die("Unknown argument: %s", argv[3]);
+			trashrestore(trash, argv[2]);
+			goto end;
+			break;
+		case 'R':
 			if (argc > 3)
 				die("Unknown argument: %s", argv[3]);
 			trashremove(trash, argv[2]);
