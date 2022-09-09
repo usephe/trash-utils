@@ -72,17 +72,17 @@ deletetrashent(struct trashent *trashent)
 			die("remove:");
 
 	if (remove(trashent->trashinfofilepath) < 0)
-		die("remove: can't remove file %s:", trashent->trashinfofilepath);
+		die("remove: cannot remove file '%s':", trashent->trashinfofilepath);
 }
 
 void
 restoretrashent(struct trashent *trashent)
 {
 	if (file_exists(trashent->deletedfilepath))
-		die("Refusing to overwite existing file %s", trashent->deletedfilepath);
+		die("Refusing to overwite existing file '%s'", trashent->deletedfilepath);
 
 	if (rename(trashent->trashfilesfilepath, trashent->deletedfilepath) < 0)
-		die("can't move the trash direcotry:");
+		die("cannot restore '%s':", trashent->trashfilesfilepath);
 }
 
 struct trashent *
@@ -96,7 +96,7 @@ readinfofile(const char *infofilepath)
 
 	FILE *infofile = fopen(infofilepath, "r");
 	if (!infofile)
-		die("fopen:");
+		die("fopen: cannot open file '%s':", infofilepath);
 
 	if (lstat(infofilepath, &statbuf) < 0)
 		die("stat:");
@@ -165,7 +165,7 @@ writeinfofile(struct trashent *trashent)
 {
 	FILE *trashinfofile = fopen(trashent->trashinfofilepath, "w");
 	if (!trashinfofile)
-		die("fopen: can't open %s:", trashent->trashinfofilepath);
+		die("fopen: cannot open '%s':", trashent->trashinfofilepath);
 
 	int result = fprintf(trashinfofile,
 					  "[Trash Info]\n"
@@ -259,10 +259,10 @@ createtrash(const char *path)
 
 	trash->trashdir = opendir(trashpath);
 	if (!trash->trashdir)
-		die("opendir: can't open directory '%s':", trashpath);
+		die("opendir: cannot open directory '%s':", trashpath);
 	trash->infodir = opendir(trash->infodirpath);
 	if (!trash->infodir)
-		die("opendir: can't open directory '%s':", trash->infodir);
+		die("opendir: cannot open directory '%s':", trash->infodir);
 
 	return trash;
 }
@@ -342,7 +342,7 @@ trashput(Trash *trash, const char *path)
 	assert(path != NULL);
 
 	if (!file_exists(path))
-		die("%s doesn't exit:", path);
+		die("'%s' doesn't exit:", path);
 
 	time_t time_now = time(NULL);
 
@@ -396,7 +396,7 @@ trashput(Trash *trash, const char *path)
 	writeinfofile(trashent);
 
 	if (rename(fullpath, trashent->trashfilesfilepath) < 0)
-		die("can't move the trash direcotry:");
+		die("cannot trash '%s':");
 
 	free(path_copy);
 	freetrashent(trashent);
