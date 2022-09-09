@@ -22,6 +22,7 @@ struct trashent {
 struct trash {
 	DIR *trashdir;
 	DIR *infodir;
+	char *trashdirpath;
 	char *filesdirpath;
 	char *infodirpath;
 };
@@ -213,7 +214,9 @@ asserttrash(Trash *trash)
 	assert(trash->trashdir != NULL);
 	assert(trash->infodir != NULL);
 
-	assert(trash->filesdirpath != NULL && trash->infodirpath != NULL);
+	assert(trash->trashdir != NULL);
+	assert(trash->filesdirpath != NULL);
+	assert(trash->infodirpath != NULL);
 }
 
 // if path is NULL used XDG_DATA_HOME/Trash as the trash location instead
@@ -238,8 +241,10 @@ createtrash(const char *path)
 	}
 
 	trashdirlen = strlen(trashloc) + strlen("/Trash");
-	char trashpath[trashdirlen + 1];
+	char *trashpath = xmalloc(trashdirlen + 1);
 	sprintf(trashpath, "%s%s", trashloc, "/Trash");
+
+	trash->trashdirpath = trashpath;
 
 	trash->filesdirpath = xmalloc(
 			(trashdirlen + strlen("/files") + 1) * sizeof(char));
@@ -280,6 +285,7 @@ closetrash(Trash *trash)
 	if (closedir(trash->infodir) < 0)
 		die("closedir:");
 
+	free(trash->trashdirpath);
 	free(trash->infodirpath);
 	free(trash->filesdirpath);
 	free(trash);
@@ -334,23 +340,29 @@ trashput(Trash *trash, const char *path)
 {
 	asserttrash(trash);
 	assert(path != NULL);
+
+	if (!file_exists(path))
+		die("%s doesn't exit:", path);
+
 	time_t time_now = time(NULL);
 
 	char fullpath[PATH_MAX];
 	if (!realpath(path, fullpath))
 		die("realpath:");
 
-	path = fullpath;
+	if (
+		!strncmp(trash->trashdirpath, fullpath, strlen(fullpath)) ||
+		!strcmp(trash->filesdirpath, fullpath) ||
+		!strcmp(trash->infodirpath, fullpath)
+	)
+		die("cannot trash directory '%s'", path);
 
-	// check if the path exists
-	if (!file_exists(path))
-		die("%s doesn't exit:", path);
 
 	struct trashent *trashent = createtrashent();
 
-	// get the basename of path
-	char *path_copy = xmalloc((strlen(path) + 1) * sizeof(char));
-	strcpy(path_copy, path);
+	// get the basename of fullpath
+	char *path_copy = xmalloc((strlen(fullpath) + 1) * sizeof(char));
+	strcpy(path_copy, fullpath);
 	char *trashfilesfilename = basename(path_copy);
 
 	char buf[PATH_MAX];
@@ -359,7 +371,7 @@ trashput(Trash *trash, const char *path)
 							 buf, sizeof(buf));
 
 
-	trashent->deletedfilepath = xmalloc((strlen(path) + 1) * sizeof(char));
+	trashent->deletedfilepath = xmalloc((strlen(fullpath) + 1) * sizeof(char));
 	trashent->trashfilesfilepath = xmalloc(
 			(strlen(trash->filesdirpath) + 1 +
 		   strlen(trashfilesfilename) + 1) * sizeof(char));
@@ -372,7 +384,7 @@ trashput(Trash *trash, const char *path)
 		 "%s/%s", trash->filesdirpath, trashfilesfilename);
 	sprintf(trashent->trashinfofilepath,
 		 "%s/%s.trashinfo", trash->infodirpath, trashfilesfilename);
-	strcpy(trashent->deletedfilepath, path);
+	strcpy(trashent->deletedfilepath, fullpath);
 
 	int deletiondatelen = 1024;
 	trashent->deletiondate = xmalloc(deletiondatelen * sizeof(char));
@@ -383,10 +395,10 @@ trashput(Trash *trash, const char *path)
 
 	writeinfofile(trashent);
 
-	// move path into Trash/file directory
-	if (rename(path, trashent->trashfilesfilepath) < 0)
+	if (rename(fullpath, trashent->trashfilesfilepath) < 0)
 		die("can't move the trash direcotry:");
 
+	free(path_copy);
 	freetrashent(trashent);
 
 	return 0;
