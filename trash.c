@@ -15,8 +15,8 @@
 struct trashent {
 	char *deletedfilepath;
 	char *deletiondate;
-	char *trashinfofilepath;
-	char *trashfilesfilepath;
+	char *infofilepath;
+	char *filesfilepath;
 };
 
 struct trash {
@@ -48,8 +48,8 @@ createtrashent()
 	struct trashent *trashent = xmalloc(sizeof(*trashent));
 	trashent->deletedfilepath = NULL;
 	trashent->deletiondate = NULL;
-	trashent->trashinfofilepath = NULL;
-	trashent->trashfilesfilepath = NULL;
+	trashent->infofilepath = NULL;
+	trashent->filesfilepath = NULL;
 
 	return trashent;
 }
@@ -58,8 +58,8 @@ void freetrashent(struct trashent *trashent)
 {
 	free(trashent->deletedfilepath);
 	free(trashent->deletiondate);
-	free(trashent->trashinfofilepath);
-	free(trashent->trashfilesfilepath);
+	free(trashent->infofilepath);
+	free(trashent->filesfilepath);
 
 	free(trashent);
 }
@@ -67,12 +67,12 @@ void freetrashent(struct trashent *trashent)
 void
 deletetrashent(struct trashent *trashent)
 {
-	if (remove(trashent->trashfilesfilepath) < 0)
+	if (remove(trashent->filesfilepath) < 0)
 		if (errno != ENOENT)
 			die("remove:");
 
-	if (remove(trashent->trashinfofilepath) < 0)
-		die("remove: cannot remove file '%s':", trashent->trashinfofilepath);
+	if (remove(trashent->infofilepath) < 0)
+		die("remove: cannot remove file '%s':", trashent->infofilepath);
 }
 
 void
@@ -81,8 +81,8 @@ restoretrashent(struct trashent *trashent)
 	if (file_exists(trashent->deletedfilepath))
 		die("Refusing to overwite existing file '%s'", trashent->deletedfilepath);
 
-	if (rename(trashent->trashfilesfilepath, trashent->deletedfilepath) < 0)
-		die("cannot restore '%s':", trashent->trashfilesfilepath);
+	if (rename(trashent->filesfilepath, trashent->deletedfilepath) < 0)
+		die("cannot restore '%s':", trashent->filesfilepath);
 }
 
 struct trashent *
@@ -152,10 +152,10 @@ readinfofile(const char *infofilepath)
 
 	trashent->deletedfilepath = deletedfilepath;
 	trashent->deletiondate = deletiondate;
-	trashent->trashinfofilepath = xmalloc((strlen(infofilepath) + 1) * sizeof(char));
-	strcpy(trashent->trashinfofilepath, infofilepath);
-	trashent->trashfilesfilepath = xmalloc((strlen(trashdirpath) + strlen("/files/") + trashfilenamelen + 1) * sizeof(char));
-	sprintf(trashent->trashfilesfilepath, "%s%s%s", trashdirpath, "/files/", trashfilename);
+	trashent->infofilepath = xmalloc((strlen(infofilepath) + 1) * sizeof(char));
+	strcpy(trashent->infofilepath, infofilepath);
+	trashent->filesfilepath = xmalloc((strlen(trashdirpath) + strlen("/files/") + trashfilenamelen + 1) * sizeof(char));
+	sprintf(trashent->filesfilepath, "%s%s%s", trashdirpath, "/files/", trashfilename);
 
 	return trashent;
 }
@@ -163,9 +163,9 @@ readinfofile(const char *infofilepath)
 int
 writeinfofile(struct trashent *trashent)
 {
-	FILE *trashinfofile = fopen(trashent->trashinfofilepath, "w");
+	FILE *trashinfofile = fopen(trashent->infofilepath, "w");
 	if (!trashinfofile)
-		die("fopen: cannot open '%s':", trashent->trashinfofilepath);
+		die("fopen: cannot open '%s':", trashent->infofilepath);
 
 	int result = fprintf(trashinfofile,
 					  "[Trash Info]\n"
@@ -372,17 +372,17 @@ trashput(Trash *trash, const char *path)
 
 
 	trashent->deletedfilepath = xmalloc((strlen(fullpath) + 1) * sizeof(char));
-	trashent->trashfilesfilepath = xmalloc(
+	trashent->filesfilepath = xmalloc(
 			(strlen(trash->filesdirpath) + 1 +
 		   strlen(trashfilesfilename) + 1) * sizeof(char));
-	trashent->trashinfofilepath = xmalloc(
+	trashent->infofilepath = xmalloc(
 			(strlen(trash->infodirpath) + 1 +
 			strlen(trashfilesfilename) +
 			strlen(".trashinfo") + 1)
 			* sizeof(char));
-	sprintf(trashent->trashfilesfilepath,
+	sprintf(trashent->filesfilepath,
 		 "%s/%s", trash->filesdirpath, trashfilesfilename);
-	sprintf(trashent->trashinfofilepath,
+	sprintf(trashent->infofilepath,
 		 "%s/%s.trashinfo", trash->infodirpath, trashfilesfilename);
 	strcpy(trashent->deletedfilepath, fullpath);
 
@@ -395,39 +395,13 @@ trashput(Trash *trash, const char *path)
 
 	writeinfofile(trashent);
 
-	if (rename(fullpath, trashent->trashfilesfilepath) < 0)
+	if (rename(fullpath, trashent->filesfilepath) < 0)
 		die("cannot trash '%s':");
 
 	free(path_copy);
 	freetrashent(trashent);
 
 	return 0;
-}
-
-void
-trashrestore(Trash *trash, char *pattern)
-{
-	asserttrash(trash);
-	assert(pattern != NULL);
-
-	rewindtrash(trash);
-
-	struct trashent *trashent;
-
-	while ((trashent = readTrash(trash))) {
-		char deletedfilepath_copy[strlen(trashent->deletedfilepath) + 1];
-		strcpy(deletedfilepath_copy, trashent->deletedfilepath);
-		char *deletedfilename = basename(deletedfilepath_copy);
-
-		if (!strcmp(deletedfilename, pattern)) {
-			restoretrashent(trashent);
-			deletetrashent(trashent);
-			printf("restore: %s\n", trashent->deletedfilepath);
-			break;
-		}
-
-		freetrashent(trashent);
-	}
 }
 
 void
@@ -475,15 +449,41 @@ trashremove(Trash *trash, char *pattern)
 
 		// TODO: support removing none empty directories from Trash
 		if (!strcmp(deletedfilename, pattern)) {
-			if (remove(trashent->trashfilesfilepath) < 0)
+			if (remove(trashent->filesfilepath) < 0)
 				die("remove:");
-			printf("trashfilesfilepath: %s\n", trashent->trashfilesfilepath);
+			printf("trashfilesfilepath: %s\n", trashent->filesfilepath);
 
-			if (remove(trashent->trashinfofilepath) < 0)
+			if (remove(trashent->infofilepath) < 0)
 				die("remove:");
-			printf("trashinfofilepath: %s\n", trashent->trashinfofilepath);
+			printf("trashinfofilepath: %s\n", trashent->infofilepath);
 
 			printf("\n");
+		}
+
+		freetrashent(trashent);
+	}
+}
+
+void
+trashrestore(Trash *trash, char *pattern)
+{
+	asserttrash(trash);
+	assert(pattern != NULL);
+
+	rewindtrash(trash);
+
+	struct trashent *trashent;
+
+	while ((trashent = readTrash(trash))) {
+		char deletedfilepath_copy[strlen(trashent->deletedfilepath) + 1];
+		strcpy(deletedfilepath_copy, trashent->deletedfilepath);
+		char *deletedfilename = basename(deletedfilepath_copy);
+
+		if (!strcmp(deletedfilename, pattern)) {
+			restoretrashent(trashent);
+			deletetrashent(trashent);
+			printf("restore: %s\n", trashent->deletedfilepath);
+			break;
 		}
 
 		freetrashent(trashent);
