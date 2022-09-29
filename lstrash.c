@@ -5,7 +5,7 @@
 #include "trash.h"
 #include "util.h"
 
-char *arguments = "[-h]";
+char *arguments = "[-h] [TRASHDIR]";
 
 void
 show_help(char *program_name)
@@ -16,27 +16,31 @@ show_help(char *program_name)
 int
 main(int argc, char *argv[])
 {
-	if (argc > 2)
-		show_help(argv[0]);
-
 	int opt;
 	while ((opt = getopt(argc, argv, "h")) != -1) {
 		switch (opt) {
 		case 'h':
-			show_help(argv[0]);
+			if (argc > 2)
+				die("Unknown argument: %s", argv[2]);
+			die("Usage: %s %s", argv[0], arguments);
 			break;
 		case '?':
-			show_help(argv[0]);
+			die("Usage: %s %s", argv[0], arguments);
 		}
 	}
 
-	if (optind < argc) {
-			show_help(argv[0]);
+	if (optind >= argc) {
+		Trash *trash = opentrash(NULL);
+		trashlist(trash);
+		closetrash(trash);
 	}
 
-	Trash *trash = opentrash(NULL);
-	trashlist(trash);
-	closetrash(trash);
+	for (; optind < argc; optind++) {
+		printf("Trash: %s\n", argv[optind]);
+		Trash *trash = opentrash(argv[optind]);
+		trashlist(trash);
+		closetrash(trash);
+	}
 
 	return EXIT_SUCCESS;
 }
