@@ -2,14 +2,25 @@ CFLAGS = -Wall -Wextra -pedantic -ggdb3
 
 PREFIX = /usr/local
 
-SRC = trash.c util.c main.c
+BIN = lstrash mvtrash rmtrash untrash
+SRC = $(BIN:=.c) trash.c util.c
 OBJ = $(SRC:.c=.o)
-BIN = tdo
 
 all: $(BIN)
 
-$(BIN): $(OBJ)
-	$(CC) $(LDFLAGS) -o $@ $(OBJ)
+TRASH = trash.o
+
+lstrash: $(TRASH) util.o lstrash.o
+	$(CC) $(LDFLAGS) -o $@ $^
+
+mvtrash: $(TRASH) util.o mvtrash.o
+	$(CC) $(LDFLAGS) -o $@ $^
+
+rmtrash: $(TRASH) util.o rmtrash.o
+	$(CC) $(LDFLAGS) -o $@ $^
+
+untrash: $(TRASH) util.o untrash.o
+	$(CC) $(LDFLAGS) -o $@ $^
 
 install: all
 	install -m 0755 -d $(DESTDIR)$(PREFIX)/bin
