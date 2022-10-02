@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <libgen.h>
 #include <linux/limits.h>
 #include <stdio.h>
@@ -8,6 +9,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "util.h"
 #include "trash.h"
@@ -189,14 +191,29 @@ getvalidtrashfilesfilename(
 	sprintf(trashinfofilepath, "%s/%s.trashinfo", trash->infodirpath, filename);
 
 	int i = 1;
-	while (file_exists(trashfilesfilepath) || file_exists(trashinfofilepath)) {
-		sprintf(trashfilesfilepath + strlen(trashfilesfilepath), "_%d", i);
-		trashinfofilepath[strlen(trashinfofilepath) - strlen(".trashinfo")] = '\0';
-		sprintf(trashinfofilepath + strlen(trashinfofilepath), "_%d.trashinfo", i);
+	errno = 0;
+	int fd = open(trashinfofilepath, O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
+	while (fd < 0 && errno == EEXIST) {
+		unsigned long trashfilesfilepathlen = strlen(trashfilesfilepath);
+		unsigned long trashinfofilepathlen = strlen(trashinfofilepath);
+
+		sprintf(trashfilesfilepath + trashfilesfilepathlen, "_%d", i);
+
+		trashinfofilepath[trashinfofilepathlen - strlen(".trashinfo")] = '\0';
+		sprintf(trashinfofilepath + trashinfofilepathlen, "_%d.trashinfo", i);
+
 		if (strlen(trashinfofilepath) >= PATH_MAX)
 			die("file name is too long");
+
 		i++;
+
+		fd = open(trashinfofilepath, O_CREAT | O_EXCL);
 	}
+
+	if (fd < -1)
+		die("trash: cannot trash file %s:", trashfilesfilepath);
+
+	close(fd);
 
 	char *trashfilesfilename = basename(trashfilesfilepath);
 	if (strlen(trashfilesfilename) >= bufsize)
