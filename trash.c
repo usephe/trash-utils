@@ -90,7 +90,7 @@ restoretrashent(struct trashent *trashent)
 time_t
 strtotime(char *str)
 {
-	struct tm tp;
+	struct tm tp = (struct tm){0};
 	strptime(str, "%Y-%m-%dT%H:%M:%S", &tp);
 	return mktime(&tp);
 }
@@ -161,11 +161,12 @@ readinfofile(const char *infofilepath)
 		deletiondate[strlen(deletiondate) - 1] = '\0';
 
 	// Remove the prefix Path= and DeletionDate=
-	memmove(encoded_deletedfilepath, encoded_deletedfilepath + strlen("Path="),
-			strlen(encoded_deletedfilepath) - strlen("Path=") + 1);
+	memmove(encoded_deletedfilepath,
+		 encoded_deletedfilepath + strlen("Path="),
+		 strlen(encoded_deletedfilepath) - strlen("Path=") + 1);
 	memmove(deletiondate,
-			deletiondate + strlen("DeletionDate="),
-			strlen(deletiondate) - strlen("DeletionDate=") + 1);
+		 deletiondate + strlen("DeletionDate="),
+		 strlen(deletiondate) - strlen("DeletionDate=") + 1);
 
 	char infofilepath_copy[strlen(infofilepath) + 1];
 	strcpy(infofilepath_copy, infofilepath);
@@ -185,6 +186,9 @@ readinfofile(const char *infofilepath)
 	strcpy(trashent->infofilepath, infofilepath);
 	trashent->filesfilepath = xmalloc((strlen(trashdirpath) + strlen("/files/") + trashfilenamelen + 1) * sizeof(char));
 	sprintf(trashent->filesfilepath, "%s%s%s", trashdirpath, "/files/", trashfilename);
+
+	free(deletiondate);
+	free(encoded_deletedfilepath);
 
 	return trashent;
 }
@@ -537,13 +541,17 @@ trashrestore(Trash *trash, char *pattern)
 		strcpy(deletedfilepath_copy, trashent->deletedfilepath);
 		char *deletedfilename = basename(deletedfilepath_copy);
 
+		int found = 0;
 		if (!strcmp(deletedfilename, pattern)) {
 			restoretrashent(trashent);
 			deletetrashent(trashent);
 			printf("restore: %s\n", trashent->deletedfilepath);
-			break;
+
+			found = 1;
 		}
 
 		freetrashent(trashent);
+		if (found)
+			break;
 	}
 }
