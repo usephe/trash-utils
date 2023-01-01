@@ -22,25 +22,26 @@ main(int argc, char *argv[])
 		case 'h':
 			if (argc > 2)
 				die("Unknown argument: %s", argv[2]);
-			die("Usage: %s %s", argv[0], arguments);
+			show_help(argv[0]);
 			break;
 		case '?':
-			die("Usage: %s %s", argv[0], arguments);
+			show_help(argv[0]);
 		}
 	}
 
+	Trash *trash;
 	if (optind >= argc) {
-		Trash *trash = opentrash(NULL);
+		trash = opentrash(NULL);
 		trashlist(trash);
-		closetrash(trash);
 	}
 
 	for (; optind < argc; optind++) {
 		printf("Trash: %s\n", argv[optind]);
-		Trash *trash = opentrash(argv[optind]);
+		trash = opentrash(argv[optind]);
 		trashlist(trash);
-		closetrash(trash);
 	}
+
+	closetrash(trash);
 
 	return EXIT_SUCCESS;
 }
