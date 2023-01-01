@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#define __USE_XOPEN
 #include <time.h>
 #include <unistd.h>
 
@@ -16,7 +17,7 @@
 
 struct trashent {
 	char *deletedfilepath;
-	char *deletiondate;
+	time_t deletiontime;
 	char *infofilepath;
 	char *filesfilepath;
 };
@@ -32,11 +33,11 @@ struct trash {
 
 struct trashent *createtrashent();
 void freetrashent(struct trashent *trashent);
+void committrashent(struct trashent *trashent);
 void deletetrashent(struct trashent *trashent);
 void restoretrashent(struct trashent *trashent);
 
 struct trashent *readinfofile(const char *infofilepath);
-int writeinfofile(struct trashent *trashent);
 
 void asserttrash(Trash *trash);
 Trash *createtrash(const char *path);
@@ -49,7 +50,7 @@ createtrashent()
 {
 	struct trashent *trashent = xmalloc(sizeof(*trashent));
 	trashent->deletedfilepath = NULL;
-	trashent->deletiondate = NULL;
+	trashent->deletiontime = 0;
 	trashent->infofilepath = NULL;
 	trashent->filesfilepath = NULL;
 
@@ -59,7 +60,6 @@ createtrashent()
 void freetrashent(struct trashent *trashent)
 {
 	free(trashent->deletedfilepath);
-	free(trashent->deletiondate);
 	free(trashent->infofilepath);
 	free(trashent->filesfilepath);
 
@@ -86,6 +86,32 @@ restoretrashent(struct trashent *trashent)
 	if (rename(trashent->filesfilepath, trashent->deletedfilepath) < 0)
 		die("cannot restore '%s':", trashent->filesfilepath);
 }
+
+time_t
+strtotime(char *str)
+{
+	struct tm tp;
+	strptime(str, "%Y-%m-%dT%H:%M:%S", &tp);
+	return mktime(&tp);
+}
+
+char *
+timetostr(time_t time)
+{
+
+	int buflen = 1024;
+	char buf[buflen + 1];
+	size_t res = strftime(buf, buflen,
+					   "%Y-%m-%dT%H:%M:%S", localtime(&time));
+	if (!res)
+		die("strftime:");
+
+	char *deletiondate = xmalloc((strlen(buf) + 1) * sizeof(char)) ;
+	strcpy(deletiondate, buf);
+
+	return deletiondate;
+}
+
 
 struct trashent *
 readinfofile(const char *infofilepath)
@@ -118,7 +144,7 @@ readinfofile(const char *infofilepath)
 			strcpy(deletedfilepath, line);
 		} else if (strncmp(line, "DeletionDate=",
 					strlen("DeletionDate=")) == 0) {
-			deletiondate = xmalloc((nread + 1) * sizeof(*deletedfilepath));
+			deletiondate = xmalloc((nread + 1) * sizeof(*deletiondate));
 			strcpy(deletiondate, line);
 		}
 	};
@@ -152,8 +178,8 @@ readinfofile(const char *infofilepath)
 	strncpy(trashfilename, infofilename, trashfilenamelen);
 	trashfilename[trashfilenamelen] = '\0';
 
+	trashent->deletiontime = strtotime(deletiondate);
 	trashent->deletedfilepath = deletedfilepath;
-	trashent->deletiondate = deletiondate;
 	trashent->infofilepath = xmalloc((strlen(infofilepath) + 1) * sizeof(char));
 	strcpy(trashent->infofilepath, infofilepath);
 	trashent->filesfilepath = xmalloc((strlen(trashdirpath) + strlen("/files/") + trashfilenamelen + 1) * sizeof(char));
@@ -162,27 +188,36 @@ readinfofile(const char *infofilepath)
 	return trashent;
 }
 
-int
-writeinfofile(struct trashent *trashent)
+void
+committrashent(struct trashent *trashent)
 {
 	FILE *trashinfofile = fopen(trashent->infofilepath, "w");
 	if (!trashinfofile)
 		die("fopen: cannot open '%s':", trashent->infofilepath);
 
+
+	char *deletiondate = timetostr(trashent->deletiontime);
 	int result = fprintf(trashinfofile,
 					  "[Trash Info]\n"
 					  "Path=%s\n"
 					  "DeletionDate=%s\n",
-					  trashent->deletedfilepath, trashent->deletiondate);
+					  trashent->deletedfilepath, deletiondate);
+
+	if (rename(trashent->deletedfilepath, trashent->filesfilepath) < 0)
+		die("cannot trash '%s':", trashent->deletedfilepath);
 
 	fclose(trashinfofile);
-
-	return result;
+	free(deletiondate);
 }
 
+/*
+ * Create in an atomic fashion an empty file in $Trash/files,
+ * The file in $trash/files filename is based on the original filename.
+ */
 char *
-getvalidtrashfilesfilename(
-	Trash *trash, const char *filename, char *buf, size_t bufsize)
+getvalidtrashfilesfilename(Trash *trash,
+						   const char *filename,
+						   char *buf, size_t bufsize)
 {
 	char trashfilesfilepath[PATH_MAX];
 	char trashinfofilepath[PATH_MAX];
@@ -355,6 +390,20 @@ readTrash(Trash *trash)
 }
 
 int
+istrashablepath(Trash *trash, const char *path)
+{
+	char fullpath[PATH_MAX];
+	if (!realpath(path, fullpath))
+		die("realpath:");
+
+	return (
+		strncmp(trash->trashdirpath, fullpath, strlen(fullpath)) &&
+		strcmp(trash->filesdirpath, fullpath) &&
+		strcmp(trash->infodirpath, fullpath)
+	);
+}
+
+int
 trashput(Trash *trash, const char *path)
 {
 	asserttrash(trash);
@@ -362,32 +411,25 @@ trashput(Trash *trash, const char *path)
 
 	if (!file_exists(path))
 		die("'%s' doesn't exit:", path);
+	// Prevent trashing a component of the trash directory path
+	if (!istrashablepath(trash, path))
+		die("cannot trash '%s'", path);
 
-	time_t time_now = time(NULL);
+
+	struct trashent *trashent = createtrashent();
 
 	char fullpath[PATH_MAX];
 	if (!realpath(path, fullpath))
 		die("realpath:");
 
-	if (
-		!strncmp(trash->trashdirpath, fullpath, strlen(fullpath)) ||
-		!strcmp(trash->filesdirpath, fullpath) ||
-		!strcmp(trash->infodirpath, fullpath)
-	)
-		die("cannot trash directory '%s'", path);
-
-
-	struct trashent *trashent = createtrashent();
-
-	// get the basename of fullpath
-	char *path_copy = xmalloc((strlen(fullpath) + 1) * sizeof(char));
-	strcpy(path_copy, fullpath);
-	char *trashfilesfilename = basename(path_copy);
-
 	char buf[PATH_MAX];
+	// Get the basename of fullpath
+	char *fullpath_copy = buf;
+	strcpy(fullpath_copy, fullpath);
+	char *trashfilesfilename = basename(fullpath_copy);
 	trashfilesfilename = getvalidtrashfilesfilename(trash,
-							 trashfilesfilename,
-							 buf, sizeof(buf));
+												 trashfilesfilename,
+												 buf, sizeof(buf));
 
 
 	trashent->deletedfilepath = xmalloc((strlen(fullpath) + 1) * sizeof(char));
@@ -399,25 +441,16 @@ trashput(Trash *trash, const char *path)
 			strlen(trashfilesfilename) +
 			strlen(".trashinfo") + 1)
 			* sizeof(char));
+
+	trashent->deletiontime = time(NULL);
+	strcpy(trashent->deletedfilepath, fullpath);
 	sprintf(trashent->filesfilepath,
 		 "%s/%s", trash->filesdirpath, trashfilesfilename);
 	sprintf(trashent->infofilepath,
 		 "%s/%s.trashinfo", trash->infodirpath, trashfilesfilename);
-	strcpy(trashent->deletedfilepath, fullpath);
 
-	int deletiondatelen = 1024;
-	trashent->deletiondate = xmalloc(deletiondatelen * sizeof(char));
-	if (!strftime(trashent->deletiondate, deletiondatelen,
-			   "%Y-%m-%dT%H:%M:%S", localtime(&time_now))) {
-		die("strftime:");
-	}
 
-	writeinfofile(trashent);
-
-	if (rename(fullpath, trashent->filesfilepath) < 0)
-		die("cannot trash '%s':");
-
-	free(path_copy);
+	committrashent(trashent);
 	freetrashent(trashent);
 
 	return 0;
@@ -433,9 +466,11 @@ trashlist(Trash *trash)
 	struct trashent *trashent;
 
 	while ((trashent = readTrash(trash)) != NULL) {
-		printf("%s %s\n", trashent->deletiondate, trashent->deletedfilepath);
+		char *deletiondate = timetostr(trashent->deletiontime);
+		printf("%s %s\n", deletiondate, trashent->deletedfilepath);
 
 		freetrashent(trashent);
+		free(deletiondate);
 	}
 }
 
