@@ -132,7 +132,7 @@ readinfofile(const char *infofilepath)
 	if (!S_ISREG(statbuf.st_mode))
 		return NULL;
 
-	char *deletedfilepath = NULL;
+	char *encoded_deletedfilepath = NULL;
 	char *deletiondate = NULL;
 
 	char *line = NULL;
@@ -140,8 +140,8 @@ readinfofile(const char *infofilepath)
 	ssize_t nread;
 	while ((nread = getline(&line, &len, infofile)) != -1) {
 		if (strncmp(line, "Path=", strlen("Path=")) == 0) {
-			deletedfilepath = xmalloc((nread + 1) * sizeof(*deletedfilepath));
-			strcpy(deletedfilepath, line);
+			encoded_deletedfilepath = xmalloc((nread + 1) * sizeof(*encoded_deletedfilepath));
+			strcpy(encoded_deletedfilepath, line);
 		} else if (strncmp(line, "DeletionDate=",
 					strlen("DeletionDate=")) == 0) {
 			deletiondate = xmalloc((nread + 1) * sizeof(*deletiondate));
@@ -151,18 +151,18 @@ readinfofile(const char *infofilepath)
 	free(line);
 	fclose(infofile);
 
-	if (!deletedfilepath || !deletiondate)
+	if (!encoded_deletedfilepath || !deletiondate)
 		return NULL;
 
-	if (deletedfilepath[strlen(deletedfilepath) - 1] == '\n')
-		deletedfilepath[strlen(deletedfilepath) - 1] = '\0';
+	if (encoded_deletedfilepath[strlen(encoded_deletedfilepath) - 1] == '\n')
+		encoded_deletedfilepath[strlen(encoded_deletedfilepath) - 1] = '\0';
 
 	if (deletiondate[strlen(deletiondate) - 1] == '\n')
 		deletiondate[strlen(deletiondate) - 1] = '\0';
 
 	// Remove the prefix Path= and DeletionDate=
-	memmove(deletedfilepath, deletedfilepath + strlen("Path="),
-			strlen(deletedfilepath) - strlen("Path=") + 1);
+	memmove(encoded_deletedfilepath, encoded_deletedfilepath + strlen("Path="),
+			strlen(encoded_deletedfilepath) - strlen("Path=") + 1);
 	memmove(deletiondate,
 			deletiondate + strlen("DeletionDate="),
 			strlen(deletiondate) - strlen("DeletionDate=") + 1);
@@ -178,8 +178,9 @@ readinfofile(const char *infofilepath)
 	strncpy(trashfilename, infofilename, trashfilenamelen);
 	trashfilename[trashfilenamelen] = '\0';
 
-	trashent->deletiontime = strtotime(deletiondate);
+	char *deletedfilepath = fullpath_decode(encoded_deletedfilepath);
 	trashent->deletedfilepath = deletedfilepath;
+	trashent->deletiontime = strtotime(deletiondate);
 	trashent->infofilepath = xmalloc((strlen(infofilepath) + 1) * sizeof(char));
 	strcpy(trashent->infofilepath, infofilepath);
 	trashent->filesfilepath = xmalloc((strlen(trashdirpath) + strlen("/files/") + trashfilenamelen + 1) * sizeof(char));
@@ -196,18 +197,21 @@ committrashent(struct trashent *trashent)
 		die("fopen: cannot open '%s':", trashent->infofilepath);
 
 
+	char *encoded_deletedfilepath = fullpath_encode(trashent->deletedfilepath);
+
 	char *deletiondate = timetostr(trashent->deletiontime);
 	int result = fprintf(trashinfofile,
 					  "[Trash Info]\n"
 					  "Path=%s\n"
 					  "DeletionDate=%s\n",
-					  trashent->deletedfilepath, deletiondate);
+					  encoded_deletedfilepath, deletiondate);
 
 	if (rename(trashent->deletedfilepath, trashent->filesfilepath) < 0)
 		die("cannot trash '%s':", trashent->deletedfilepath);
 
 	fclose(trashinfofile);
 	free(deletiondate);
+	free(encoded_deletedfilepath);
 }
 
 /*
