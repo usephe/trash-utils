@@ -236,45 +236,28 @@ asserttrash(Trash *trash)
 	assert(trash->infodirpath != NULL);
 }
 
-// if path is NULL used XDG_DATA_HOME/Trash as the trash location instead
 Trash *
-createtrash(const char *path)
+createtrash(const char *trashpath)
 {
+	assert(trashpath != NULL);
+
 	Trash *trash = xmalloc(sizeof(*trash));
-	char trashloc[PATH_MAX + 1];
-	int trashdirlen = 0;
 
-	if (path) {
-		strcpy(trashloc, path);
-	} else {
-		const char *home = xgetenv("HOME", NULL);
-		if (!home)
-			die("HOME is not set");
-
-		char defaultxdgdata[strlen(home) + strlen("/.local/share") + 1];
-		sprintf(defaultxdgdata, "%s%s", home, "/.local/share");
-
-		strcpy(trashloc, xgetenv("XDG_DATA_HOME", defaultxdgdata));
-	}
-
-	trashdirlen = strlen(trashloc) + strlen("/Trash");
-	char *trashpath = xmalloc(trashdirlen + 1);
-	sprintf(trashpath, "%s%s", trashloc, "/Trash");
-
-	trash->trashdirpath = trashpath;
-
+	int trashpathlen = strlen(trashpath);
+	trash->trashdirpath = xmalloc(trashpathlen + 1);
 	trash->filesdirpath = xmalloc(
-			(trashdirlen + strlen("/files") + 1) * sizeof(char));
-	sprintf(trash->filesdirpath, "%s%s", trashpath, "/files");
-
+			(trashpathlen + strlen("/files") + 1) * sizeof(char));
 	trash->infodirpath = xmalloc(
-			(trashdirlen + strlen("/info") + 1) * sizeof(char));
+			(trashpathlen + strlen("/info") + 1) * sizeof(char));
+
+	strcpy(trash->trashdirpath, trashpath);
+	sprintf(trash->filesdirpath, "%s%s", trashpath, "/files");
 	sprintf(trash->infodirpath, "%s%s", trashpath, "/info");
 
 	xmkdir(trash->filesdirpath);
 	xmkdir(trash->infodirpath);
 
-	trash->trashdir = opendir(trashpath);
+	trash->trashdir = opendir(trash->trashdirpath);
 	if (!trash->trashdir)
 		die("opendir: cannot open directory '%s':", trashpath);
 	trash->infodir = opendir(trash->infodirpath);
@@ -284,10 +267,29 @@ createtrash(const char *path)
 	return trash;
 }
 
+/*
+ * trashpath is /path/to/trash/directory.
+ * If trashpath is NULL use the default trash directory (e.g. XDG_DATA_HOME/Trash).
+ */
 Trash *
 opentrash(const char *trashpath)
 {
-	Trash *trash = createtrash(trashpath);
+	Trash *trash;
+	if (!trashpath) {
+		char defaulttrash[PATH_MAX + 1];
+		const char *home = xgetenv("HOME", NULL);
+		if (!home)
+			die("HOME is not set");
+
+		char defaultxdgdata[strlen(home) + strlen("/.local/share") + 1];
+		sprintf(defaultxdgdata, "%s%s", home, "/.local/share");
+
+		sprintf(defaulttrash, "%s/Trash", xgetenv("XDG_DATA_HOME", defaultxdgdata));
+		trash = createtrash(defaulttrash);
+		return trash;
+	}
+
+	trash = createtrash(trashpath);
 	return trash;
 }
 
