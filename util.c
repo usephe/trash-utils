@@ -147,7 +147,6 @@ fullpath_encode(char *path)
 	assert(path[0] == '/');
 
 
-	printf("path = %s\n", path);
 	unsigned long pathlen = strlen(path);
 	char *pathcopy = xmalloc((pathlen + 1) * sizeof(*pathcopy));
 	strcpy(pathcopy, path);
@@ -164,14 +163,12 @@ fullpath_encode(char *path)
 	}
 	free(pathcopy);
 
-	printf("encoded_path = %s\n", encoded_path);
 	return encoded_path;
 }
 
 char *
 fullpath_decode(char *encoded_path)
 {
-	printf("fullpath_decode: encoded_path = %s\n", encoded_path);
 	assert(encoded_path != NULL);
 	assert(encoded_path[0] == '/');
 
@@ -191,6 +188,5 @@ fullpath_decode(char *encoded_path)
 	}
 	free(encoded_pathcopy);
 
-	printf("fullpath_decode: path = %s\n", path);
 	return path;
 }
