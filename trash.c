@@ -245,6 +245,7 @@ getvalidtrashfilesfilename(Trash *trash,
 		sprintf(trashfilesfilepath + trashfilesfilepathlen, "_%d", i);
 
 		trashinfofilepath[trashinfofilepathlen - strlen(".trashinfo")] = '\0';
+		trashinfofilepathlen = strlen(trashinfofilepath);
 		sprintf(trashinfofilepath + trashinfofilepathlen, "_%d.trashinfo", i);
 
 		if (strlen(trashinfofilepath) >= PATH_MAX)
@@ -252,7 +253,7 @@ getvalidtrashfilesfilename(Trash *trash,
 
 		i++;
 
-		fd = open(trashinfofilepath, O_CREAT | O_EXCL);
+		fd = open(trashinfofilepath, O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
 	}
 
 	if (fd < -1)
