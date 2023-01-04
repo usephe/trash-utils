@@ -11,6 +11,7 @@ int strendswith(const char *str, const char *suffix);
 void xmkdir(char *path);
 
 int file_exists(const char *file);
+void remove_directory(const char *path);
 
 
 char * uri_encode(const char* originalText);

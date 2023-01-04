@@ -69,9 +69,12 @@ void freetrashent(struct trashent *trashent)
 void
 deletetrashent(struct trashent *trashent)
 {
-	if (remove(trashent->filesfilepath) < 0)
-		if (errno != ENOENT)
+	if (remove(trashent->filesfilepath) < 0) {
+		if (errno == ENOTEMPTY || errno == EEXIST)
+			remove_directory(trashent->filesfilepath);
+		else if (errno != ENOENT)
 			die("remove:");
+	}
 
 	if (remove(trashent->infofilepath) < 0)
 		die("remove: cannot remove file '%s':", trashent->infofilepath);
@@ -111,7 +114,6 @@ timetostr(time_t time)
 
 	return deletiondate;
 }
-
 
 struct trashent *
 readinfofile(const char *infofilepath)
@@ -509,18 +511,8 @@ trashremove(Trash *trash, char *pattern)
 		strcpy(deletedfilepath_copy, trashent->deletedfilepath);
 		char *deletedfilename = basename(deletedfilepath_copy);
 
-		// TODO: support removing none empty directories from Trash
-		if (!strcmp(deletedfilename, pattern)) {
-			if (remove(trashent->filesfilepath) < 0)
-				die("remove:");
-			printf("trashfilesfilepath: %s\n", trashent->filesfilepath);
-
-			if (remove(trashent->infofilepath) < 0)
-				die("remove:");
-			printf("trashinfofilepath: %s\n", trashent->infofilepath);
-
-			printf("\n");
-		}
+		if (!strcmp(deletedfilename, pattern))
+			deletetrashent(trashent);
 
 		freetrashent(trashent);
 	}

@@ -1,11 +1,13 @@
 #include <assert.h>
 #include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "util.h"
 
@@ -80,6 +82,37 @@ file_exists(const char *file)
 {
 	struct stat sb;
 	return lstat(file, &sb) == 0;
+}
+
+void
+remove_directory(const char *path)
+{
+	DIR *dirp = opendir(path);
+	if (!dirp)
+		die("opendir:");
+
+	size_t pathlen = strlen(path);
+	struct dirent *dp;
+	char buf[PATH_MAX];
+	errno = 0;
+	while ((dp = readdir(dirp)) != NULL) {
+		if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0)
+			continue;
+
+		size_t len = pathlen + 1 + strlen(dp->d_name);
+		snprintf(buf, len + 1, "%s/%s", path, dp->d_name);
+
+		struct stat statbuf;
+		if (lstat(buf, &statbuf) < 0)
+			die("lstat:");
+		if (S_ISDIR(statbuf.st_mode))
+			remove_directory(buf);
+		else
+			unlink(buf);
+	}
+
+	closedir(dirp);
+	rmdir(path);
 }
 
 char *
