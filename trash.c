@@ -31,28 +31,75 @@ struct trash {
 };
 
 
-struct trashent *createtrashent();
+/* function declarations */
+struct trashent *createtrashent(Trash *trash, const char *trashedfilename, time_t deletiontime);
 void freetrashent(struct trashent *trashent);
 void committrashent(struct trashent *trashent);
 void deletetrashent(struct trashent *trashent);
 void restoretrashent(struct trashent *trashent);
-
 struct trashent *readinfofile(const char *infofilepath);
-
 void asserttrash(Trash *trash);
 Trash *createtrash(const char *path);
 void rewindtrash(Trash *trash);
 struct trashent *readTrash(Trash *trash);
 
 
+/* function implementations */
 struct trashent *
-createtrashent()
+createtrashent(Trash* trash, const char *trashedfilename, time_t deletiontime)
 {
 	struct trashent *trashent = xmalloc(sizeof(*trashent));
+
+	trashent->deletiontime = deletiontime;
 	trashent->deletedfilepath = NULL;
-	trashent->deletiontime = 0;
-	trashent->infofilepath = NULL;
-	trashent->filesfilepath = NULL;
+	if (trashedfilename == NULL) {
+		trashent->infofilepath = NULL;
+		trashent->filesfilepath = NULL;
+	} else {
+		/*
+		 * Create in an atomic fashion an empty file in $Trash/files,
+		 * That file's filename is based on the trashedfilename parameter.
+		 */
+		char trashfilesfilepath[PATH_MAX];
+		char trashinfofilepath[PATH_MAX];
+
+		sprintf(trashfilesfilepath, "%s/%s", trash->filesdirpath, trashedfilename);
+		sprintf(trashinfofilepath, "%s/%s.trashinfo", trash->infodirpath, trashedfilename);
+
+		int i = 1;
+		errno = 0;
+		int fd = open(trashinfofilepath, O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
+		while (fd < 0 && errno == EEXIST) {
+			unsigned long trashfilesfilepathlen = strlen(trashfilesfilepath);
+			unsigned long trashinfofilepathlen = strlen(trashinfofilepath);
+
+			sprintf(trashfilesfilepath + trashfilesfilepathlen, "_%d", i);
+
+			trashinfofilepath[trashinfofilepathlen - strlen(".trashinfo")] = '\0';
+			trashinfofilepathlen = strlen(trashinfofilepath);
+			sprintf(trashinfofilepath + trashinfofilepathlen, "_%d.trashinfo", i);
+
+			if (strlen(trashinfofilepath) >= PATH_MAX)
+				die("file name is too long");
+
+			i++;
+
+			fd = open(trashinfofilepath, O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
+		}
+
+		if (fd < -1)
+			die("trash: cannot trash file %s:", trashfilesfilepath);
+
+		close(fd);
+
+		trashent->filesfilepath = xmalloc((strlen(trashfilesfilepath) + 1)
+									* sizeof(*trashent->filesfilepath));
+		trashent->infofilepath = xmalloc((strlen(trashinfofilepath) + 1)
+								   * sizeof(*trashent->infofilepath));
+
+		strcpy(trashent->filesfilepath, trashfilesfilepath);
+		strcpy(trashent->infofilepath, trashinfofilepath);
+	}
 
 	return trashent;
 }
@@ -121,7 +168,7 @@ readinfofile(const char *infofilepath)
 	if (!strendswith(infofilepath, ".trashinfo"))
 		return NULL;
 
-	struct trashent *trashent = createtrashent();
+	struct trashent *trashent = createtrashent(NULL, NULL, -1);
 	struct stat statbuf;
 
 	FILE *infofile = fopen(infofilepath, "r");
@@ -204,13 +251,14 @@ committrashent(struct trashent *trashent)
 
 
 	char *encoded_deletedfilepath = fullpath_encode(trashent->deletedfilepath);
-
 	char *deletiondate = timetostr(trashent->deletiontime);
 	int result = fprintf(trashinfofile,
 					  "[Trash Info]\n"
 					  "Path=%s\n"
 					  "DeletionDate=%s\n",
 					  encoded_deletedfilepath, deletiondate);
+	if (result < 0)
+		die("fprintf:");
 
 	if (rename(trashent->deletedfilepath, trashent->filesfilepath) < 0)
 		die("cannot trash '%s':", trashent->deletedfilepath);
@@ -218,55 +266,6 @@ committrashent(struct trashent *trashent)
 	fclose(trashinfofile);
 	free(deletiondate);
 	free(encoded_deletedfilepath);
-}
-
-/*
- * Create in an atomic fashion an empty file in $Trash/files,
- * The file in $trash/files filename is based on the original filename.
- */
-char *
-getvalidtrashfilesfilename(Trash *trash,
-						   const char *filename,
-						   char *buf, size_t bufsize)
-{
-	char trashfilesfilepath[PATH_MAX];
-	char trashinfofilepath[PATH_MAX];
-
-	sprintf(trashfilesfilepath, "%s/%s", trash->filesdirpath, filename);
-	sprintf(trashinfofilepath, "%s/%s.trashinfo", trash->infodirpath, filename);
-
-	int i = 1;
-	errno = 0;
-	int fd = open(trashinfofilepath, O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
-	while (fd < 0 && errno == EEXIST) {
-		unsigned long trashfilesfilepathlen = strlen(trashfilesfilepath);
-		unsigned long trashinfofilepathlen = strlen(trashinfofilepath);
-
-		sprintf(trashfilesfilepath + trashfilesfilepathlen, "_%d", i);
-
-		trashinfofilepath[trashinfofilepathlen - strlen(".trashinfo")] = '\0';
-		trashinfofilepathlen = strlen(trashinfofilepath);
-		sprintf(trashinfofilepath + trashinfofilepathlen, "_%d.trashinfo", i);
-
-		if (strlen(trashinfofilepath) >= PATH_MAX)
-			die("file name is too long");
-
-		i++;
-
-		fd = open(trashinfofilepath, O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
-	}
-
-	if (fd < -1)
-		die("trash: cannot trash file %s:", trashfilesfilepath);
-
-	close(fd);
-
-	char *trashfilesfilename = basename(trashfilesfilepath);
-	if (strlen(trashfilesfilename) >= bufsize)
-		return NULL;
-
-	strcpy(buf, trashfilesfilename);
-	return buf;
 }
 
 void
@@ -315,14 +314,14 @@ createtrash(const char *trashpath)
 
 /*
  * trashpath is /path/to/trash/directory.
- * If trashpath is NULL use the default trash directory (e.g. XDG_DATA_HOME/Trash).
+ * If trashpath is NULL use the home trash directory (e.g. XDG_DATA_HOME/Trash).
  */
 Trash *
 opentrash(const char *trashpath)
 {
 	Trash *trash;
 	if (!trashpath) {
-		char defaulttrash[PATH_MAX + 1];
+		char hometrash[PATH_MAX + 1];
 		const char *home = xgetenv("HOME", NULL);
 		if (!home)
 			die("HOME is not set");
@@ -330,8 +329,8 @@ opentrash(const char *trashpath)
 		char defaultxdgdata[strlen(home) + strlen("/.local/share") + 1];
 		sprintf(defaultxdgdata, "%s%s", home, "/.local/share");
 
-		sprintf(defaulttrash, "%s/Trash", xgetenv("XDG_DATA_HOME", defaultxdgdata));
-		trash = createtrash(defaulttrash);
+		sprintf(hometrash, "%s/Trash", xgetenv("XDG_DATA_HOME", defaultxdgdata));
+		trash = createtrash(hometrash);
 		return trash;
 	}
 
@@ -427,7 +426,6 @@ trashput(Trash *trash, const char *path)
 		die("cannot trash '%s'", path);
 
 
-	struct trashent *trashent = createtrashent();
 
 	char fullpath[PATH_MAX];
 	if (!realpath(path, fullpath))
@@ -438,27 +436,10 @@ trashput(Trash *trash, const char *path)
 	char *fullpath_copy = buf;
 	strcpy(fullpath_copy, fullpath);
 	char *trashfilesfilename = basename(fullpath_copy);
-	trashfilesfilename = getvalidtrashfilesfilename(trash,
-												 trashfilesfilename,
-												 buf, sizeof(buf));
 
-
+	struct trashent *trashent = createtrashent(trash, trashfilesfilename, time(NULL));
 	trashent->deletedfilepath = xmalloc((strlen(fullpath) + 1) * sizeof(char));
-	trashent->filesfilepath = xmalloc(
-			(strlen(trash->filesdirpath) + 1 +
-		   strlen(trashfilesfilename) + 1) * sizeof(char));
-	trashent->infofilepath = xmalloc(
-			(strlen(trash->infodirpath) + 1 +
-			strlen(trashfilesfilename) +
-			strlen(".trashinfo") + 1)
-			* sizeof(char));
-
-	trashent->deletiontime = time(NULL);
 	strcpy(trashent->deletedfilepath, fullpath);
-	sprintf(trashent->filesfilepath,
-		 "%s/%s", trash->filesdirpath, trashfilesfilename);
-	sprintf(trashent->infofilepath,
-		 "%s/%s.trashinfo", trash->infodirpath, trashfilesfilename);
 
 
 	committrashent(trashent);
