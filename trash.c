@@ -90,7 +90,8 @@ createtrashent(Trash* trash, const char *trashedfilename, time_t deletiontime)
 		if (fd < -1)
 			die("trash: cannot trash file %s:", trashfilesfilepath);
 
-		close(fd);
+		if (close(fd) < 0)
+			die("close:");
 
 		trashent->filesfilepath = xmalloc((strlen(trashfilesfilepath) + 1)
 									* sizeof(*trashent->filesfilepath));
@@ -198,7 +199,8 @@ readinfofile(const char *infofilepath)
 		}
 	};
 	free(line);
-	fclose(infofile);
+	if (fclose(infofile) == EOF)
+		die("fclose:");
 
 	if (!encoded_deletedfilepath || !deletiondate)
 		return NULL;
@@ -263,7 +265,8 @@ committrashent(struct trashent *trashent)
 	if (rename(trashent->deletedfilepath, trashent->filesfilepath) < 0)
 		die("cannot trash '%s':", trashent->deletedfilepath);
 
-	fclose(trashinfofile);
+	if (fclose(trashinfofile) == EOF)
+		die("fclose:");
 	free(deletiondate);
 	free(encoded_deletedfilepath);
 }
